@@ -1,0 +1,281 @@
+import sys
+
+sys.path.append(".")
+
+import pytest
+import asyncio
+import itertools
+from asg_runtime import Executor
+from asg_runtime.utils import (
+    get_logger,
+    setup_logging,
+)
+from asg_runtime.models import (
+    Settings,
+    CacheConfig,
+    CacheConfigLRU,
+    CacheBackends,
+    CacheConfigDisk,
+    CacheConfigRedis,
+    CacheStats,
+    AppStats,
+)
+
+settings = Settings()
+settings.logging.log_level = "DEBUG"
+setup_logging(settings.logging)
+logger = get_logger("exec_real")
+# logger.debug(f"Executor tests starting with settings={settings.model_dump()}")
+
+BAD_SPEC = """
+    {
+     "url": "https://example.org/main"
+    }
+    """
+
+GOOD_SPEC = """
+    {
+        "foo": {
+            "url": "https://jsonplaceholder.typicode.com/posts/17",
+            "extra": {
+                "bar": {
+                    "url": "https://jsonplaceholder.typicode.com/posts/13"
+                },
+                "list": [
+                    {"url": "https://jsonplaceholder.typicode.com/posts/1"},
+                    {"not_url": "https://jsonplaceholder.typicode.com/posts/14"},
+                    {"url": "https://jsonplaceholder.typicode.com/posts/1"}
+                ]
+            }
+        }
+    }
+    """
+
+BAD_SPEC = """
+    {
+        "foo": {
+            "url": "https://jsonplaceholder.typicode.com/posts/17",
+            "extra": {
+                "bar": {
+                    "url": "https://example.org/main"
+                },
+                "list": [
+                    {"url": "https://jsonplaceholder.typicode.com/posts/1"},
+                    {"not_url": "https://jsonplaceholder.typicode.com/posts/14"},
+                    {"url": "https://jsonplaceholder.typicode.com/posts/1"}
+                ]
+            }
+        }
+    }
+    """
+
+settings.http.http_timeout = 5
+
+# Cartesian product of bool flags and backends
+good_params = list(
+    itertools.product(
+        [True, False],  # use_response_cache
+        [True, False],  # use_origin_cache
+        CacheBackends._member_map_.values(),  # response cache backend
+        CacheBackends._member_map_.values(),  # origin cachebackend
+        [GOOD_SPEC],  # specs
+    )
+)
+
+bad_params = list(
+    itertools.product(
+        [True, False],  # use_response_cache
+        [True, False],  # use_origin_cache
+        CacheBackends._member_map_.values(),  # response cache backend
+        CacheBackends._member_map_.values(),  # origin cachebackend
+        [BAD_SPEC],  # specs
+    )
+)
+
+
+def get_cache_config_for_backend(cache_backend: CacheBackends) -> CacheConfig:
+    if cache_backend == CacheBackends.lru:
+        return CacheConfigLRU()
+    elif cache_backend == CacheBackends.disk:
+        return CacheConfigDisk()
+    elif cache_backend == CacheBackends.redis:
+        return CacheConfigRedis()
+    else:
+        return
+
+
+def confirm_cache_stats(stats: CacheStats, hits: int, misses: int):
+    assert stats
+    assert isinstance(stats, CacheStats)
+    assert isinstance(stats.hits, int)
+    assert isinstance(stats.misses, int)
+    assert stats.hits == hits
+    assert stats.misses == misses
+
+
+def confirm_result_status(result: any, status: str):
+    assert result
+    assert isinstance(result, dict)
+    assert result["status"]
+    assert status == result["status"]
+
+
+def get_result_error(result: any) -> str:
+    confirm_result_status(result, "error")
+    message = result["message"]
+    assert message
+    assert isinstance(message, str)
+    return message
+
+
+def get_result_data(result: any) -> dict:
+    confirm_result_status(result, "ok")
+    data = result["data"]
+    assert data
+    assert isinstance(data, dict)
+    return data
+
+
+def prepare_cache_settings(use_rsp_cache, use_org_cache, rsp_cache_backend, org_cache_backend):
+    # configure settings
+    settings.caching.use_response_cache = use_rsp_cache
+    if use_rsp_cache:
+        settings.caching.response_cache_backend = rsp_cache_backend
+        settings.caching.response_cache_config.custom = get_cache_config_for_backend(
+            rsp_cache_backend
+        )
+
+    settings.caching.use_origin_cache = use_org_cache
+    if use_org_cache:
+        settings.caching.origin_cache_backend = org_cache_backend
+        settings.caching.origin_cache_config.custom = get_cache_config_for_backend(
+            org_cache_backend
+        )
+
+
+@pytest.mark.parametrize(
+    "use_rsp_cache, use_org_cache, rsp_cache_backend, org_cache_backend, spec", good_params
+)
+@pytest.mark.asyncio
+async def test_executor_good_spec(
+    use_rsp_cache, use_org_cache, rsp_cache_backend, org_cache_backend, spec
+):
+
+    prepare_cache_settings(use_rsp_cache, use_org_cache, rsp_cache_backend, org_cache_backend)
+
+    executor = await Executor.async_create(settings)
+    await executor.async_clear_origin_cache()
+    await executor.async_clear_response_cache()
+
+    # --- First request (should populate caches) ---
+    result1 = await executor.async_get_endpoint_data(spec)
+    data1 = get_result_data(result1)
+
+    # --- Second request (should hit response cache if enabled) ---
+    result2 = await executor.async_get_endpoint_data(spec)
+    data2 = get_result_data(result1)
+
+    # --- Check app-level stats ---
+    stats = executor.get_app_stats()
+    assert stats
+    assert isinstance(stats, AppStats)
+    assert stats.requests_received == 2
+    assert stats.served_from_origin == 1
+    if use_rsp_cache:
+        assert stats.served_from_cache == 1
+    else:
+        assert stats.served_from_cache == 0
+
+    # --- Optional: Check backend-specific cache stats ---
+    if use_rsp_cache:
+        stats = executor.get_response_cache_stats()
+        confirm_cache_stats(stats, 1, 1)
+
+    if use_org_cache:
+        stats = executor.get_origin_cache_stats()
+        # confirm_cache_stats(stats, 1, 1)
+
+
+@pytest.mark.parametrize(
+    "use_rsp_cache, use_org_cache, rsp_cache_backend, org_cache_backend, spec", bad_params
+)
+@pytest.mark.asyncio
+async def test_executor_bad_spec(
+    use_rsp_cache, use_org_cache, rsp_cache_backend, org_cache_backend, spec
+):
+
+    prepare_cache_settings(use_rsp_cache, use_org_cache, rsp_cache_backend, org_cache_backend)
+
+    executor = await Executor.async_create(settings)
+    await executor.async_clear_origin_cache()
+    await executor.async_clear_response_cache()
+
+    result = await executor.async_get_endpoint_data(spec)
+    error = get_result_error(result)
+    logger.debug(f"error message: {error}")
+
+
+async def main():
+    # for cache_be in CacheBackends._member_map_.values():
+    # for cache_be in [CacheBackends.lru]:
+    # async def test_executor_cache_flow(
+    # use_rsp_cache,
+    # use_org_cache,
+    # rsp_cache_backend,
+    # org_cache_backend):
+
+    await test_executor_good_spec(False, False, None, None, GOOD_SPEC)
+    logger.debug(f"DONE for good spec")
+
+    await test_executor_bad_spec(False, False, None, None, BAD_SPEC)
+    logger.debug(f"DONE for bad spec")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+# async def test_executor_varied_cache_settings(use_rsp_cache, use_org_cache, rsp_cache_backend, org_cache_backend):
+#     # setup response cache
+#     settings.caching.use_response_cache = use_rsp_cache
+#     if use_rsp_cache:
+#         settings.caching.response_cache_backend = rsp_cache_backend
+#         settings.caching.response_cache_config.custom = get_cache_config_for_backend(rsp_cache_backend)
+
+#     # setup origin cache
+#     settings.caching.use_origin_cache = use_org_cache
+#     if use_org_cache:
+#         settings.caching.origin_cache_backend = org_cache_backend
+#         settings.caching.origin_cache_config.custom = get_cache_config_for_backend(org_cache_backend)
+
+#     logger.debug(f"cache settings={settings.caching}")
+#     executor = await Executor.create(settings)
+
+#     # Clear both caches
+#     await executor.async_clear_origin_cache()
+#     await executor.async_clear_response_cache()
+
+#     result = await executor.async_get_endpoint_data(DUMMY_SPEC)
+#     assert result
+
+#     logger.debug(f"result={result}")
+#     assert result["status"] == "ok"
+
+#     assert "data" in result
+#     assert isinstance(result["data"], dict)
+
+#     if use_rsp_cache:
+#         stats = executor.get_response_cache_stats()
+#         assert stats
+#         logger.debug(f"stats={stats}")
+#         assert isinstance(stats.hits, int)
+
+#     if use_org_cache:
+#         stats = executor.get_origin_cache_stats()
+#         assert stats
+#         logger.debug(f"stats={stats}")
+#         assert isinstance(stats.hits, int)
+
+#     app_stats = executor.get_app_stats()
+#     assert app_stats
+#     assert app_stats.requests_received == 1
+#     assert app_stats.requests_served == 1

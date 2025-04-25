@@ -1,0 +1,66 @@
+[project]
+name = "asg-runtime"
+version = "0.1"
+
+dependencies = [
+  "setuptools",
+  "rich",
+  "pandas",
+  "varsubst",
+  "pyyaml",
+  "httpx",
+]
+
+[project.optional-dependencies]
+
+dev = ["ruff"]
+
+test = ["pytest", "pytest-asyncio"]
+
+test-app = ["fastapi[standard]", "orjson"]
+cache-disk=["diskcache"]
+cache-redis=["ioredis", "distutils"]
+logs-json=["pythonjsonlogger"]
+
+[tool.pytest.ini_options]
+# asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+
+log_cli = true
+#log_cli_level = "DEBUG"
+#log_cli_format = "%(asctime)s [%(levelname)8s] [%(name)s] %(message)s (%(filename)s:%(lineno)s)"
+#log_cli_date_format = "%Y-%m-%d.%H:%M"
+
+# log_file = "pytest.log"
+# log_file_level = "DEBUG"
+# log_file_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
+# log_file_date_format = "%Y-%m-%d %H:%M:%S"
+
+[tool.ruff]
+line-length = 100  # defaults to 88 like black
+target-version = "py312"  # the python version to target, useful when considering code upgrades, defaults to "py310"
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle
+  "F",   # pyflakes
+  "UP",  # pyupgrade,
+  "I",   # isort
+]
+
+ignore = ["E501"]
+
+# unfixable = ["B"]
+
+# [per-file-ignores]
+# "__init__.py" = ["E402"]
+# "path/to/file.py" = ["E402"]
+
+
+[tool.ruff.isort]
+
+[tool.ruff.format]
+quote-style = "double"  # or "single" if you prefer
+indent-style = "space"
+line-ending = "auto"
+skip-magic-trailing-comma = false

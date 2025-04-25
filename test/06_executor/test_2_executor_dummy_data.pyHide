@@ -1,0 +1,239 @@
+import sys
+
+sys.path.append(".")
+
+import pytest
+import inspect
+import asyncio
+
+from asg_runtime import Executor, Settings
+from asg_runtime.utils import get_logger, setup_logging
+
+settings = Settings()
+settings.logging.log_level = "DEBUG"
+setup_logging(settings.logging)
+logger = get_logger("test_executor_data")
+logger.debug(f"Executor tests starting with settings={settings.model_dump()}")
+
+
+async def get_executor(settings) -> Executor:
+    logger.debug(f"Creating Executor with settings={settings.caching.model_dump()}")
+    return await Executor.async_create(settings)
+
+
+# first test for bad specs
+ep_raw_spec_no_url = """
+    {
+        "foo": {
+            "extra": {
+                "bar": {
+                },
+                "list": [
+                ]
+            }
+        }
+    }
+    """
+
+raw_json_bad_json = """
+{
+    "url": "https://main.com",
+    "dependencies": [
+        {"url": "https://dep1.com"},
+        {"https://dep2.com"},
+        {"url": "https://dep1.com"},
+        {
+            "extra": {
+                "nested": {
+                    "url": "https://dep3.com"
+                }
+    ],
+    "meta": {
+        "url": "https://meta.com"
+    }
+}
+"""
+
+bad_specs = [ep_raw_spec_no_url, raw_json_bad_json]
+
+
+@pytest.mark.parametrize("ep_raw_spec", bad_specs)
+@pytest.mark.asyncio
+async def test_get_data_bad_specs(ep_raw_spec: str):
+    executor = await get_executor(settings)
+
+    data = await executor.async_get_dummy_endpoint_data(ep_raw_spec)
+    assert data
+    logger.debug(f"received data of type {type(data)} ")
+    assert isinstance(data, dict)
+    logger.debug(f"received dict {data} ")
+    status = data.get("status")
+    assert status == "error"
+    message = data.get("message")
+    assert message
+    assert isinstance(message, str)
+    assert message.startswith(settings.messaging.invalid_endpoint_spec)
+
+    stats = executor.get_app_stats()
+    assert stats.requests_received == 1
+    assert stats.served_from_cache == 0
+    assert stats.served_from_origin == 0
+
+
+# --------------- now test for simple case of one url -----------
+
+ep_spec_one_url = """
+    {
+     "url": "https://jsonplaceholder.typicode.com/posts/1"
+    }
+    """
+ep_spec_no_repeats = """
+    {
+        "foo": {
+            "url": "https://jsonplaceholder.typicode.com/posts/17",
+            "extra": {
+                "bar": {
+                    "url": "https://jsonplaceholder.typicode.com/posts/13"
+                },
+                "list": [
+                    {"url": "https://jsonplaceholder.typicode.com/posts/1"},
+                    {"not_url": "https://jsonplaceholder.typicode.com/posts/1"},
+                    {"ukurl": "https://jsonplaceholder.typicode.com/posts/1"}
+                ]
+            }
+        }
+    }
+    """
+ep_spec_repeats = """
+    {
+        "foo": {
+            "extra": [
+                "bar": {"url": "https://jsonplaceholder.typicode.com/posts/1"},
+                "kuku": {"url": "https://jsonplaceholder.typicode.com/posts/1"},
+            ]
+        }
+    }
+    """
+
+
+good_specs = [ep_spec_one_url, ep_spec_no_repeats]
+
+
+@pytest.mark.parametrize("ep_raw_spec", good_specs)
+@pytest.mark.asyncio
+async def test_get_data_good_specs(ep_raw_spec: str):
+    executor = await get_executor(settings)
+
+    data = await executor.async_get_dummy_endpoint_data(ep_raw_spec)
+    if inspect.isawaitable(data):
+        await data
+    assert data
+    logger.debug(f"data size={len(data)}")
+    logger.debug(f"data={data}")
+    assert isinstance(data, dict)
+    status = data.get("status")
+    assert status == "ok"
+    response_data = data.get("data")
+    assert response_data
+
+    stats = executor.get_app_stats()
+    logger.debug(stats.model_dump())
+    assert stats.requests_received == 1
+    assert stats.served_from_cache == 0
+    assert stats.served_from_origin == 1
+
+
+async def need_to_parametrise():
+    for use_rsp_cache in [True, False]:
+        for use_org_cache in [True, False]:
+            settings.caching.use_response_cache = use_rsp_cache
+            settings.caching.use_origin_cache = use_org_cache
+            logger.debug(f"use_rsp_cache={use_rsp_cache}, use_org_cache={use_org_cache}")
+
+            for spec in good_specs:
+                await test_get_data(spec)
+
+
+async def main():
+    logger.debug(f"main")
+
+    for spec in bad_specs:
+        await test_get_data_bad_spec(spec)
+        logger.debug(f"DONE test_get_data_bad_spec for {spec}")
+
+    await need_to_parametrise()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+    # # Check that AppStats was updated
+    # stats = executor.get_app_stats()
+    # assert stats.requests_served == 1
+    # assert stats.bytes_served > 0
+
+# # -----------------------------------------------
+
+
+# def test_get_url_from_string(executor):
+#     endpoint_spec = "kuku"
+
+#     expected_result = "no url"
+#     result = executor.get_endpoint_data(endpoint_spec)["result"]
+#     assert expected_result == result
+#     logger.debug(f"executor.get_app_stats={executor.get_app_stats()}")
+#     logger.debug(f"executor.get_response_cache_stats={executor.get_response_cache_stats()}")
+
+
+# def test_get_url_from_dict(executor):
+#     url = "https://data.transportation.gov/api/views/keg4-3bc2/rows.json"
+
+#     endpoint_spec = {
+#         "url": url,
+#     }
+#     result = executor.get_endpoint_data(endpoint_spec)["result"]
+#     logger.debug(f"executor.get_app_stats={executor.get_app_stats()}")
+#     logger.debug(f"executor.get_response_cache_stats={executor.get_response_cache_stats()}")
+#     assert url == result
+
+
+async def main():
+    logger.debug(f"main")
+
+    for spec in bad_specs:
+        await test_get_data_bad_spec(spec)
+        logger.debug(f"DONE test_get_data_bad_spec for {spec}")
+
+    for spec in good_specs:
+        await test_get_data(spec)
+        logger.debug(f"DONE test_get_data for {spec}")
+
+    # await test_get_data_url()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+# ---
+# # Normalize expected URLs using trailing slash
+# expected_urls = {"https://main.com/", "https://dep1.com/", "https://dep2.com/"}
+# actual_urls = {str(spec.main_url)} | {str(url) for url in spec.dependent_urls}
+# assert actual_urls == expected_urls
+
+# assert str(spec.main_url) in expected_urls
+# executor = get_executor(settings)
+
+
+# endpoint_spec = {
+#     "kuku": "stam",
+# }
+
+# assert data
+# logger.debug(f"endpoint_spec={endpoint_spec}, data={data}")
+# assert isinstance(data, dict)
+# result = data.get("result")
+# assert result
+# assert result == settings.msgs.bad_spec_no_URL
+
+# stats = executor.get_app_stats()
+# assert stats.is_zero()

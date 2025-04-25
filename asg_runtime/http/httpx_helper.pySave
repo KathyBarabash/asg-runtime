@@ -1,0 +1,422 @@
+from enum import StrEnum, auto
+from enum import Enum
+from pydantic import BaseModel
+import httpx
+import asyncio
+from urllib.parse import urlencode
+import hashlib
+
+from ..utils import (
+    get_logger,
+    get_fstring_kwords,
+)
+# from ..models import (
+#     HttpHeaders,
+#     CachedHeaders,
+#     HttpDataSource,
+#     HttpRetryStatuses,
+#     HttpGoodStatuses,
+#     me
+# )
+
+class HttpMethods(Enum):
+    post = "post"
+    get = "get"
+    put = "put"
+
+# only include headers of interest
+class HttpResponceHeaders(Enum):
+    etag = "etag"
+    last_mod = "last-modified"
+    if_none_match = "If-None-Match"
+    if_mod_since = "If-Modified-Since"
+    content_length = "content-length"
+    retry_after = "Retry-After"
+
+class HttpRequestHeaders(Enum):
+    etag = "etag"
+    last_mod = "last-modified"
+    if_none_match = "If-None-Match"
+    if_mod_since = "If-Modified-Since"
+    content_length = "content-length"
+
+# only include statuses of interest
+class HttpGoodStatuses(Enum):
+    success = 200 
+    refresh = 304 
+
+class HttpRetryStatuses(Enum):
+    request_timeout = 408 # A possibly temporary server delay
+    request_too_many = 429 # Possible rate-limiting (use Retry-After)
+    server_error = 500 # A possibly temporary server issue
+    gw_error = 502 # A possibly temporary network issue 
+    service_down = 503 # A possibly temporary service outage
+    gw_timeout = 504  # A possibly temporary network delay
+
+class PaginationTypeEnum(Enum):
+    PAGE = auto()
+    CURSOR = auto()
+    OFFSET = auto()
+    KEYSET = auto()
+    SEEK = KEYSET
+    TIME = auto()
+
+class PagingParamDirectory(BaseModel):
+    # Name of key in pagination_params dict that gives page number
+    pageRef: str
+    # Path in response data to page size number
+    pageSizePath: str
+    # Path in response data to total data size number
+    totalSizePath: str
+
+class HttpPagination(BaseModel):
+    type: PaginationTypeEnum | None = None
+    # If a response contains a URL to the next block of paginated data, this
+    # field contains the path within the response data to the URL for the next
+    # block. If this is provided, no other fields are necessary for determining
+    # how to access the next set of data, just execute on this URL until the
+    # response data no longer has this path.
+    next_path: str | None = None
+    # Dictionary containing key names equal to a required query parameter(s) to
+    # access the next block of paginated data, and values equal to the path for
+    # where to find those values in the latest set of response data.
+    # Depending on the pagination type, some of these parameters may be handled
+    # in special ways (like determining how many blocks of data exist, and
+    # where we exist in those blocks).
+    pagination_params: dict[str, any] | None = None
+    # This maps parameters needed to implement a certain type of paging
+    param_translation: PagingParamDirectory | None = None
+
+
+logger = get_logger("httpx_helper")
+
+
+# ------------------ exported -----------------
+class FromAPI(BaseModel):
+    rsp_data: dict | None = None
+    # rsp_headers: httpx.Headers | None = None
+    rsp_headers: dict | None = None
+    maybe_paged: bool | None = False
+    requests_issued: int | None = 0
+    bytes_received: int | None = 0
+
+    def describe(self) -> dict:
+        # print contents excluding the data
+        return {
+            "type": self.__class__.__name__,
+            "new_headers": self.rsp_headers,
+            "maybe_paged": self.maybe_paged,
+            "requests_issued": self.requests_issued,
+            "bytes_received": self.bytes_received,
+        }
+
+
+
+
+def hash_source(source: HttpDataSource) -> str:
+    logger.debug(f"hash_source enter")
+    sorted_params = urlencode(sorted(source.parameter_args.items()))
+    raw_key = f"{source.url_template}?{sorted_params}"
+    logger.debug(f"hash_source - raw_key={raw_key}")
+    return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+
+
+def add_caching_headers(request_headers: dict, cached_headers: CachedHeaders) -> dict:
+    logger.debug(
+        f"add_caching_headers enter for request_headers={request_headers}, cached_headers={cached_headers}"
+    )
+    result = request_headers
+
+    if cached_headers:
+        if cached_headers.etag:
+            request_headers[HttpHeaders.if_none_match.value] = cached_headers.etag
+
+        if cached_headers.last_mod:
+            request_headers[HttpHeaders.if_mod_since.value] = cached_headers.last_mod
+
+    logger.debug(f"fresult={result}")
+    return result
+
+
+def get_caching_headers(cached_headers: CachedHeaders, rsp_headers) -> CachedHeaders:
+    logger.debug(
+        f"get_caching_headers enter for cached_headers={cached_headers}, rsp_headers={rsp_headers}"
+    )
+    headers_to_cache = CachedHeaders()
+    num_headers = 0
+
+    if HttpHeaders.etag.value in rsp_headers:
+        logger.debug("response headers contains etag")
+        headers_to_cache.etag = rsp_headers[HttpHeaders.etag.value]
+        num_headers += 1
+
+    if HttpHeaders.last_mod.value in rsp_headers:
+        logger.debug("response headers contains last-modified")
+        headers_to_cache.last_mod = rsp_headers[HttpHeaders.last_mod.value]
+        num_headers += 1
+
+    if num_headers:
+        logger.debug("returning headers_to_cache={headers_to_cache}")
+        return headers_to_cache
+
+    return None
+
+
+async def get_data_from_origin(
+    url: str,
+    header_args: dict = {},
+    query_params: dict = {},
+    timeout: int = 10,
+    max_retries: int = 3,
+    retry_backoff: float = 0.5,
+):
+
+    logger.debug(
+        f"get_data_from_origin enter for url={url}, query_params={query_params}, header_args={header_args}"
+    )
+
+    attempt = 0
+    result = FromAPI()
+
+    while attempt < max_retries:
+        try:
+            result.requests_issued += 1
+            # async with httpx.AsyncClient(timeout=self.timeout) as client:
+            #         response = await client.get(url, headers=request_headers or None)
+            logger.debug(
+                f"issuing httpx client get for url={url}, query_params={query_params}, header_args={header_args}"
+            )
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(
+                    url=url,
+                    params=query_params or None,
+                    headers=header_args or None,
+                    timeout=timeout,
+                )
+
+            if response.status_code == 304:
+                logger.info(f"304 Not Modified for {url}")
+                result.rsp_headers = (response.headers,)
+                return result
+            elif 500 <= response.status_code < 600:
+                raise httpx.HTTPStatusError(
+                    f"Server error {response.status_code} from {url}",
+                    request=response.request,
+                    response=response,
+                )
+            elif response.status_code == 200:
+                logger.info(f"200 OK for {url}")
+                maybe_paged = warn_if_paginated(response, url)
+                # TODO handle pagination
+                rsp_headers = response.headers
+                rsp_data = response.json()
+                result.bytes_received += get_content_length(rsp_headers) or len(rsp_data)
+                result.rsp_data = rsp_data
+                result.rsp_headers = rsp_headers
+                result.maybe_paged = maybe_paged
+                return result
+
+            # Unexpected status — fail fast
+            response.raise_for_status()
+        except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError) as e:
+            attempt += 1
+            if attempt < max_retries:
+                delay = retry_backoff * attempt
+                logger.info(
+                    f"[Retry] {attempt}/{max_retries} for url={url} failed: {e}. Retrying in {delay:.1f}s"
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"giving up for url={url}: {e}")
+
+    return result
+
+
+async def fetch_all_pages(
+    url: str,
+    base_query_params: dict,
+    header_args: dict,
+    pagination: HttpPagination,
+    timeout: int = 10,
+    max_pages: int = 10
+) -> list[httpx.Response]:
+    all_responses = []
+    query_params = base_query_params.copy()
+    page_count = 0
+
+    while page_count < max_pages:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(url, params=query_params, headers=header_args or None)
+
+        if response.status_code != 200:
+            break
+
+        all_responses.append(response)
+        page_count += 1
+
+        # Use next_path if provided
+        if pagination.next_path:
+            try:
+                next_url = extract_json_path(response.json(), pagination.next_path)
+                if not next_url:
+                    break
+                url = next_url
+                query_params = {}  # next_url is assumed to be self-contained
+            except Exception:
+                break
+
+        # Or build next query params from pagination_params
+        elif pagination.pagination_params:
+            try:
+                new_params = {}
+                for param, json_path in pagination.pagination_params.items():
+                    value = extract_json_path(response.json(), json_path)
+                    if value is not None:
+                        new_params[param] = value
+                if not new_params:
+                    break
+                query_params.update(new_params)
+            except Exception:
+                break
+        else:
+            break
+
+    return all_responses
+
+# ------------------ private -----------------
+
+def extract_json_path(data: dict, path: str):
+    # Assumes path is like '$.meta.next_page'
+    keys = path.lstrip("$.").split(".")
+    for k in keys:
+        data = data.get(k)
+        if data is None:
+            return None
+    return data
+#-----------------------------------------------
+# this gets all the request parameters as they are
+# and loops through several attempts to receive 'good' response
+# on success (status 200), returns the response as is
+# on failure, throws exception
+
+# only include statuses of interest
+class HttpGoodStatuses(Enum):
+    success = 200 
+    refresh = 304 
+
+class HttpRetryStatuses(Enum):
+    request_timeout = 408 # A possibly temporary server delay
+    request_too_many = 429 # Possible rate-limiting (use Retry-After)
+    server_error = 500 # A possibly temporary server issue
+    gw_error = 502 # A possibly temporary network issue 
+    service_down = 503 # A possibly temporary service outage
+    gw_timeout = 504  # A possibly temporary network delay
+
+async def send_request_with_retries(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    *,
+    params: dict,
+    headers: dict,
+    json_data: dict | None,
+    timeout: int,
+    max_retries: int = 3,
+    retry_backoff: float = 0.5,
+) -> httpx.Response:
+    last_exc = None
+    for attempt in range(max_retries):
+        try:
+            response = await client.request(
+                method=method,
+                url=url,
+                params=params,
+                headers=headers,
+                json=json_data,
+                timeout=timeout,
+            )
+
+            status_code = response.status_code
+            # Handle expected status codes
+            if status_code in HttpGoodStatuses:
+                return response
+
+            # Optionally retry on some error codes
+            if status_code in HttpRetryStatuses:
+                retry_after = response.headers.get(
+                    HttpResponceHeaders.retry_after.value, 
+                    retry_backoff * (2**attempt))
+                await asyncio.sleep(retry_after)
+                continue
+
+            # Unexpected status — fail fast
+            response.raise_for_status()
+
+        except httpx.HTTPError as exc:
+            last_exc = exc
+            await asyncio.sleep(retry_backoff * (2**attempt))
+
+    raise RuntimeError(
+        f"Failed to get good response from {url} after {max_retries} attempts") from last_exc
+
+async def fetch_all_pages(
+    url: str,
+    base_query_params: dict,
+    header_args: dict,
+    pagination: HttpPagination,
+    timeout: int = 10,
+    max_pages: int = 10,
+    max_retries: int = 3,
+    retry_backoff: float = 0.5,
+) -> list[httpx.Response]:
+    all_responses = []
+    query_params = base_query_params.copy()
+    page_count = 0
+
+    while page_count < max_pages:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await send_request_with_retries(
+                client = client,
+                method = HttpMethods.get,
+                url = url,
+                params = query_params,
+                headers = header_args or None,
+                timeout=timeout,
+                max_retries = max_retries,
+                retry_backoff = retry_backoff)
+
+        if response.status_code != 200:
+            # can only be 304 wich is handled by the caller
+            break
+
+        all_responses.append(response)
+        page_count += 1
+
+        # Use next_path if provided
+        if pagination.next_path:
+            try:
+                next_url = extract_json_path(response.json(), pagination.next_path)
+                if not next_url:
+                    break
+                url = next_url
+                query_params = {}  # next_url is assumed to be self-contained
+            except Exception:
+                break
+
+        # Or build next query params from pagination_params
+        elif pagination.pagination_params:
+            try:
+                new_params = {}
+                for param, json_path in pagination.pagination_params.items():
+                    value = extract_json_path(response.json(), json_path)
+                    if value is not None:
+                        new_params[param] = value
+                if not new_params:
+                    break
+                query_params.update(new_params)
+            except Exception:
+                break
+        else:
+            break
+
+    return all_responses

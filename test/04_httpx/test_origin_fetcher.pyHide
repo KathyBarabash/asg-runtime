@@ -1,0 +1,66 @@
+import pytest
+
+from asg_runtime.models import (
+    HttpSettings,
+    RestClientStats,
+    RestDataSource,
+)
+from asg_runtime.http import OriginFetcher
+
+from asg_runtime.utils import get_logger
+
+logger = get_logger("test_be_ser")
+
+
+http_settings = HttpSettings()
+http_settings.http_max_retries = 1
+
+url_scenarios = [
+    [],  # empty list
+    ["https://jsonplaceholder.typicode.com/posts/1"],  # single item
+    [
+        "https://jsonplaceholder.typicode.com/posts/1",
+        "https://jsonplaceholder.typicode.com/posts/2",
+    ],  # multiple distinct
+    [
+        "https://jsonplaceholder.typicode.com/posts/1",
+        "https://jsonplaceholder.typicode.com/posts/1",
+    ],  # repeating items
+]
+
+url_ids = ["empty", "single", "multi-distinct", "multi-repeat"]
+
+
+# --------------------
+@pytest.mark.parametrize("urls", url_scenarios, ids=url_ids)
+@pytest.mark.asyncio
+async def test_init_fetcher(cache_instance, urls):
+    cache, CacheCls = cache_instance
+
+    assert cache
+    assert isinstance(cache, CacheCls)
+
+    origin_fetcher = OriginFetcher(http_settings, cache)
+    assert origin_fetcher
+
+    stats = origin_fetcher.get_rest_client_stats()
+    assert stats
+    assert isinstance(stats, RestClientStats)
+    assert stats.is_zero()
+
+    data = await origin_fetcher.fetch_data(urls)
+    logger.debug(f"urls = {urls}")
+    logger.debug(f"data = {data}")
+    logger.debug(f"rest stats = {stats}")
+    logger.debug(f"cache stats = {cache.describe()}")
+
+
+# -------------------------------------------------------------------
+async def main():
+    pass
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(main())
