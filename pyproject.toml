@@ -18,6 +18,7 @@ dependencies = [
   "varsubst",
   "pyyaml",
   "httpx",
+  "orjson",
 ]
 
 [project.optional-dependencies]
