@@ -1,9 +1,18 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "asg-runtime"
-version = "0.1"
+version = "0.1.0"
+description = "Automatic SFDP Generation runtime library"
+authors = [
+  { name="TEADAL", email="your@email.com" }
+]
 
 dependencies = [
-  "setuptools",
+  "pydantic",
+  "pydantic_settings",
   "rich",
   "pandas",
   "varsubst",
@@ -16,8 +25,8 @@ dependencies = [
 dev = ["ruff"]
 
 test = ["pytest", "pytest-asyncio"]
-
 test-app = ["fastapi[standard]", "orjson"]
+
 cache-disk=["diskcache"]
 cache-redis=["ioredis", "distutils"]
 logs-json=["pythonjsonlogger"]

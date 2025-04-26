@@ -8,7 +8,7 @@ from .common import (
     Dataset,
     make_tool,
 )
-from .executor import ConnectorRequest
+
 from .executor.transform.transform_exec import (
     apply_transformations_json,
 )
@@ -22,5 +22,6 @@ __all__ = [
     "ArgSourceEnum",
     "CallTypeEnum",
     "ArgLocationEnum",
-    "make_tool" "apply_transformations_json",
+    "make_tool",
+    "apply_transformations_json",
 ]

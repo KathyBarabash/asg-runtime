@@ -18,7 +18,6 @@ from .gin import apply_transformations_json as gin_apply_transforms
 
 # import GIN methods
 from .gin.common.util import replace_env_var
-from .gin.executor.rest_helper import perform_rest_api_call as gin_rest_api_call
 from .http import OriginFetcher
 from .models import RestDataSource
 from .utils import get_logger
@@ -169,6 +168,7 @@ class GinHelper:
                 )
             else:
                 # use legacy sync non-caching way
+                from .gin.executor.rest_helper import perform_rest_api_call as gin_rest_api_call
                 origin_data = gin_rest_api_call(
                     source.api_call,
                     source.servers,
@@ -472,6 +472,7 @@ class GinHelper:
                     )
                     self.collected_apis.append(rest_api_call)
                 else:
+                    from .gin.executor.rest_helper import perform_rest_api_call as gin_rest_api_call
                     api_result = gin_rest_api_call(
                         api_call,
                         servers,
