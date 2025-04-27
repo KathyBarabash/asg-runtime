@@ -41,13 +41,6 @@ jobs:
         push: true
         tags: ghcr.io/${{ env.repo_lowercase }}:latest
 
-    # - name: Build and Push Docker image
-    #   uses: docker/build-push-action@v5
-    #   with:
-    #     context: .
-    #     push: true
-    #     tags: ghcr.io/${{ github.repository }}:latest
-
     - name: Install build tool
       run: pip install build
 
