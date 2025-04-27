@@ -1,0 +1,54 @@
+name: CI - Build and Release
+
+on:
+  push:
+    branches: ["main"]
+    tags:
+      - 'v*'  # Trigger also when a version tag is pushed
+
+jobs:
+  build-docker-and-python-release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write    # Needed to create a GitHub Release
+      packages: write    # Needed to push Docker image to GHCR
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and Push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ghcr.io/${{ github.repository }}:latest
+
+    - name: Install build tool
+      run: pip install build
+
+    - name: Build Python dist
+      run: python -m build
+
+    - name: Upload Python dist as GitHub Release assets
+      if: startsWith(github.ref, 'refs/tags/v')  # Only when a tag is pushed
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          dist/*.whl
+          dist/*.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
