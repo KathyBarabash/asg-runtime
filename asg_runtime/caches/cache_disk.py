@@ -7,7 +7,7 @@ from ..models import (
     CacheBackends,
     CacheConfig,
     CacheConfigDisk,
-    CachePurpose,
+    CacheRoles,
 )
 from ..serializers import Serializer
 from ..utils import get_logger
@@ -36,7 +36,7 @@ class DiskCache(BaseCache):
     def backend_name(cls) -> CacheBackends:
         return CacheBackends.disk
 
-    def __init__(self, config: CacheConfig, serializer: Serializer, purpose: CachePurpose):
+    def __init__(self, config: CacheConfig, serializer: Serializer, purpose: CacheRoles):
         logger.debug("init enter")
         super().__init__(config=config, serializer=serializer, purpose=purpose)
 
@@ -46,10 +46,10 @@ class DiskCache(BaseCache):
             )
 
         customConfig: CacheConfigDisk = config.custom
-        base_path = customConfig.base_path
-        if purpose == CachePurpose.response:
+        base_path = customConfig.cache_disk_path
+        if purpose == CacheRoles.response:
             subdir_name = customConfig.response_subdir
-        elif purpose == CachePurpose.origin:
+        elif purpose == CacheRoles.origin:
             subdir_name = customConfig.origin_subdir
         else:
             logger.debug("bad parameter for cache purpose, should never be here")

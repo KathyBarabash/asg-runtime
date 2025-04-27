@@ -11,7 +11,7 @@ from asg_runtime.models import (
 
 # Correct combinations
 @pytest.mark.parametrize("backend,custom", [
-    (CacheBackends.lru, CacheConfigLRU(max_items=100)),
+    (CacheBackends.lru, CacheConfigLRU(cache_lru_max_items=100)),
     (CacheBackends.redis, CacheConfigRedis(host="localhost", port=6379)),
     (CacheBackends.disk, CacheConfigDisk(directory="/tmp/cache")),
 ])
@@ -29,7 +29,7 @@ def test_valid_origin_cache_combinations(backend, custom):
 @pytest.mark.parametrize("backend,wrong_custom", [
     (CacheBackends.lru, CacheConfigRedis(host="localhost", port=6379)),
     (CacheBackends.redis, CacheConfigDisk(directory="/tmp/cache")),
-    (CacheBackends.disk, CacheConfigLRU(max_items=50)),
+    (CacheBackends.disk, CacheConfigLRU(cache_lru_max_items=50)),
 ])
 def test_invalid_origin_cache_combinations_raise(backend, wrong_custom):
     with pytest.raises(ValueError):

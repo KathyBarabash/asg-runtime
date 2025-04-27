@@ -4,7 +4,7 @@ try:
 except ImportError:
     raise ImportError("The 'aioredis' package is required for redis caching.")
 
-from ..models import CacheBackends, CacheConfig, CacheConfigRedis, CachePurpose
+from ..models import CacheBackends, CacheConfig, CacheConfigRedis, CacheRoles
 from ..serializers import Serializer
 from ..utils import get_logger
 from .cache_base import BaseCache
@@ -31,7 +31,7 @@ class RedisCache(BaseCache):
         return CacheBackends.redis
 
     def __init__(
-        self, config: CacheConfig, serializer: Serializer, purpose: CachePurpose | None = None
+        self, config: CacheConfig, serializer: Serializer, purpose: CacheRoles | None = None
     ):
         logger.debug("init enter")
         super().__init__(config=config, serializer=serializer, purpose=purpose)
@@ -39,7 +39,7 @@ class RedisCache(BaseCache):
         self.config = config
         if isinstance(config.custom, CacheConfigRedis):
             self.customConfig: CacheConfigRedis = config.custom
-            self.redis_url = self.customConfig.redis_url
+            self.redis_url = self.customConfig.cache_redis_url
             self.redis_port = self.customConfig.redis_port
             self.redis_host = self.customConfig.redis_host
 

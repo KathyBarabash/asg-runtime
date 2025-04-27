@@ -6,7 +6,7 @@ from asg_runtime.caches.caching import get_cache_class  # internal
 from asg_runtime.models import (
     CacheBackends,
     CacheConfig,
-    CachePurpose,
+    CacheRoles,
     CachingSettings,
     Encodings,
     LoggingSettings,
@@ -20,7 +20,7 @@ logger = get_logger("conftest")
 
 
 async def create_cache(
-    backend: CacheBackends, ser_flavor: Encodings, purpose: CachePurpose
+    backend: CacheBackends, ser_flavor: Encodings, purpose: CacheRoles
 ) -> tuple[BaseCache, type[BaseCache]]:
 
     CacheCls = get_cache_class(backend)
@@ -44,14 +44,14 @@ CACHE_VARIANTS = [
     (backend, flavor, purpose)
     for backend in CacheBackends
     for flavor in Encodings
-    for purpose in CachePurpose
+    for purpose in CacheRoles
 ]
 
 CACHE_VARIANT_IDS = [
     f"{backend.name}-{flavor.name}-{purpose.name}"
     for backend in CacheBackends
     for flavor in Encodings
-    for purpose in CachePurpose
+    for purpose in CacheRoles
 ]
 
 

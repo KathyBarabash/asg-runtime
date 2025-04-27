@@ -17,7 +17,7 @@ class MyBaseSettings(BaseSettings):
 
 
 # ------------ logging ------------------------------------------------
-class LogFlavors(Enum):
+class LogFlavors(str, Enum):
     rich = "rich"
     plain = "plain"
     json = "json"
@@ -25,7 +25,7 @@ class LogFlavors(Enum):
 
 class LoggingSettings(MyBaseSettings):
     log_level: str = Field(
-        default="INFO",
+        default=logging.getLevelName(logging.INFO),
         description= \
         f"Control the logging level, choose between: {logging.getLevelNamesMapping().keys()}.",
     )
@@ -47,52 +47,49 @@ class Encodings(Enum):
 # ------------ caching ------------------------------------------------
 
 
-class CacheBackends(Enum):
+class CacheBackends(str, Enum):
     redis = "redis"
     disk = "disk"
     lru = "lru"
 
 
-class CachePurpose(Enum):
+class CacheRoles(str, Enum):
     response = "response"
     origin = "origin"
 
 
 class CacheConfigRedis(MyBaseSettings):
-    redis_url: str = Field(
+    cache_redis_url: str = Field(
         default="redis://localhost:6379", description="URL of the redis server")
-    redis_host: str = Field(default="localhost")
-    redis_port: int = Field(default=6379)
-    redis_db: int = Field(default=0)
+    cache_redis_db: int = Field(default=0)
 
 
 class CacheConfigDisk(MyBaseSettings):
-    base_path: Path = Field(
+    cache_disk_path: Path = Field(
         default=Path("./sfdp_cache"), 
         description="Path to a directory where the caches are located"
     )
-    response_subdir: str = Field(
-        default="responses",
-        description="Name of the subdirectory where the reponse cache is located",
-    )
-    origin_subdir: str = Field(
-        default="origin_data",
-        description="Name of the subdirectory where the origin cache is located",
-    )
-
 
 class CacheConfigLRU(MyBaseSettings):
-    max_items: int = Field(default=100)
+    cache_lru_max_items: int = Field(default=100)
 
 
 class CacheConfig(MyBaseSettings):
-    ttl_seconds: int = Field(
+    cache_ttl_seconds: int = Field(
         default=3600, description="TTL for result data cache in seconds")
-    namespace: str | None = "default"
-    custom: CacheConfigLRU | CacheConfigDisk | CacheConfigRedis = Field(
-        default=CacheConfigLRU(), description="Setup backend specific cache configuration"
-    )
+    cache_namespace: str | None = "default"
+    custom: CacheConfigLRU | CacheConfigDisk | CacheConfigRedis = CacheConfigLRU()
 
+    # def __init__(self, backend: CacheBackends):
+    #     match backend:
+    #         case CacheBackends.lru:
+    #             self.custom = CacheConfigLRU()
+    #         case CacheBackends.disk:
+    #             self.custom = CacheConfigDisk()
+    #         case CacheBackends.redis:
+    #             self.custom = CacheConfigRedis()
+    #         case _:
+    #             raise ValueError(f"Unknown cache backend: {backend}")
 
 class CachingSettings(MyBaseSettings):
     use_origin_cache: bool = Field(default=True, description="Enable caching of origin data")
@@ -112,6 +109,7 @@ class CachingSettings(MyBaseSettings):
             f"Control the response caching backend, choose between: {CacheBackends._member_names_}",
     )
     response_cache_config: CacheConfig = CacheConfig()
+        
 
     @classmethod
     def get_cache_config_type(cls, backend: CacheBackends) -> type[CacheConfig]:

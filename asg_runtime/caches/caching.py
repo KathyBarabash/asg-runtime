@@ -1,5 +1,5 @@
 
-from ..models import CacheBackends, CacheConfig, CachePurpose, CachingSettings, Encodings
+from ..models import CacheBackends, CacheConfig, CacheRoles, CachingSettings, Encodings
 from ..serializers import Serializer
 from ..utils import get_logger
 from .cache_base import BaseCache
@@ -39,7 +39,7 @@ class Caching:
                 CacheCls=get_cache_class(settings.origin_cache_backend),
                 config=settings.origin_cache_config,
                 serializer=serializer,
-                purpose=CachePurpose.origin,
+                purpose=CacheRoles.origin,
             )
             origin_cache.check_init()
             self.origin_cache = origin_cache
@@ -50,7 +50,7 @@ class Caching:
                 CacheCls=get_cache_class(settings.response_cache_backend),
                 config=settings.response_cache_config,
                 serializer=serializer,
-                purpose=CachePurpose.response,
+                purpose=CacheRoles.response,
             )
             response_cache.check_init()
             self.response_cache = response_cache
@@ -86,7 +86,7 @@ async def async_create_cache(
     backend: CacheBackends,
     config: CacheConfig,
     encoding: Encodings,
-    purpose=CachePurpose,
+    purpose=CacheRoles,
 ) -> BaseCache:
     logger.debug(
         f"async_create_cache entered for type={backend}, config={config}, encoding={encoding}, purpose={purpose}")
@@ -96,7 +96,7 @@ async def async_create_cache(
     if CacheCls.requires_encoding() and not serializer.supports_encoding():
         message = f"{CacheCls.__name__} requires encoding, but {serializer.__class__.__name__} does not support it"
         logger.warning(message)
-        if purpose == CachePurpose.origin:
+        if purpose == CacheRoles.origin:
             raise CachingFailure(
                 f"{CacheCls.__name__} requires encoding, but {serializer.__class__.__name__} does not support it"
             )

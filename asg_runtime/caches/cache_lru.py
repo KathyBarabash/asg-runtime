@@ -4,7 +4,7 @@ from ..models import (
     CacheBackends,
     CacheConfig,
     CacheConfigLRU,
-    CachePurpose,
+    CacheRoles,
 )
 from ..serializers import Serializer
 from ..utils import get_logger
@@ -32,7 +32,7 @@ class LRUCache(BaseCache):
         return CacheBackends.lru
 
     def __init__(
-        self, config: CacheConfig, serializer: Serializer, purpose: CachePurpose | None = None
+        self, config: CacheConfig, serializer: Serializer, purpose: CacheRoles | None = None
     ):
         logger.debug("init enter")
         super().__init__(config=config, serializer=serializer, purpose=purpose)
@@ -42,7 +42,7 @@ class LRUCache(BaseCache):
         self.config = config
         if isinstance(config.custom, CacheConfigLRU):
             self.customConfig: CacheConfigLRU = config.custom
-            self.max_items = self.customConfig.max_items
+            self.max_items = self.customConfig.cache_lru_max_items
             logger.debug(f"initializing internal gettter for max_items={self.max_items}")
 
             @lru_cache(maxsize=self.max_items)

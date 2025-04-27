@@ -7,7 +7,7 @@ from .gin_helper import GinHelper
 from .http import OriginFetcher
 from .models import (
     AppStats,
-    CachePurpose,
+    CacheRoles,
     CacheStats,
     Settings,
     Stats,
@@ -50,7 +50,7 @@ class Executor:
                 backend=settings.caching.response_cache_backend,
                 config=settings.caching.response_cache_config,
                 encoding=settings.derived_rsp_cache_serializer,
-                purpose=CachePurpose.response,
+                purpose=CacheRoles.response,
             )
             self.logger.debug(f"response cache created: {self.response_cache.describe()}")
         else:
@@ -64,7 +64,7 @@ class Executor:
                 backend=settings.caching.origin_cache_backend,
                 config=settings.caching.origin_cache_config,
                 encoding=settings.origin_encoding,
-                purpose=CachePurpose.origin,
+                purpose=CacheRoles.origin,
             )
             self.logger.debug(f"origin cache created: {self.origin_cache.describe()}")
         else:

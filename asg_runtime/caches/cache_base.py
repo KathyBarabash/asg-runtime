@@ -5,7 +5,7 @@ from ..models import (
     CacheBackends,
     CacheConfig,
     CachedHeaders,
-    CachePurpose,
+    CacheRoles,
     CacheStats,
 )
 from ..serializers import Serializer
@@ -39,7 +39,7 @@ class BaseCache(ABC):
         raise NotImplementedError
 
     def __init__(
-        self, config: CacheConfig, serializer: Serializer, purpose: CachePurpose | None = None
+        self, config: CacheConfig, serializer: Serializer, purpose: CacheRoles | None = None
     ):
         logger.debug("init enter")
 

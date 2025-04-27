@@ -26,7 +26,7 @@ async def lru_cache_flavors(request) -> tuple[LRUCache, Encodings]:
     serializer = Serializer.create(flavor)
 
     cacheConfig = CacheConfig()
-    cacheConfig.custom.max_items = 50
+    cacheConfig.custom.cache_lru_max_items = 50
     logger.debug(f"cacheSettings={cacheConfig.model_dump()}")
 
     cache = LRUCache(config=cacheConfig, serializer=serializer)
