@@ -30,12 +30,23 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Set lowercase repository
+      id: vars
+      run: echo "repo_lowercase=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
     - name: Build and Push Docker image
       uses: docker/build-push-action@v5
       with:
         context: .
         push: true
-        tags: ghcr.io/${{ github.repository }}:latest
+        tags: ghcr.io/${{ env.repo_lowercase }}:latest
+
+    # - name: Build and Push Docker image
+    #   uses: docker/build-push-action@v5
+    #   with:
+    #     context: .
+    #     push: true
+    #     tags: ghcr.io/${{ github.repository }}:latest
 
     - name: Install build tool
       run: pip install build
