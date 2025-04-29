@@ -3,16 +3,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Response
 from starlette.status import HTTP_200_OK
 
-from asg_runtime import Executor, Settings
+from asg_runtime import Executor
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        settings = Settings()
-        executor = await Executor.async_create(settings)
+        # settings = Settings()
+        executor = await Executor.async_create()
         app.state.executor = executor
-        app.state.settings = settings.exposed()
+        app.state.settings = executor.get_settings()
 
         yield  # reached if no errors
     except Exception:
@@ -31,8 +31,7 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/service/settings", tags=["service"])
 def get_settings(request: Request) -> dict:
-    settings = request.app.state.settings
-    return settings
+    return app.state.settings
 
 
 @app.get("/service/stats", tags=["service"])
