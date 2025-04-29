@@ -14,7 +14,7 @@ build-docker:
   # override (empty) the global before_script
   before_script: []
   script:
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $DOCKER_REGISTRY
+    - docker login -u "$DOCKER_USER_NAME" -p "$REGISTRY_PASSWORD" "https://registry.teadal.ubiwhere.com"
     - docker build -t $DOCKER_IMAGE:latest .
     - docker push $DOCKER_IMAGE:latest
 
