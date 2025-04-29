@@ -26,7 +26,7 @@ dependencies = [
 dev = ["ruff"]
 
 test = ["pytest", "pytest-asyncio"]
-test-app = ["fastapi[standard]", "orjson"]
+test-app = ["fastapi[standard]"]
 
 cache-disk=["diskcache"]
 cache-redis=["redis"] # on linux, may need also "distutils"
