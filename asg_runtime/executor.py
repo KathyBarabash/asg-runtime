@@ -7,7 +7,6 @@ from .gin_helper import GinHelper
 from .http import OriginFetcher
 from .models import (
     AppStats,
-    CacheRoles,
     CacheStats,
     Settings,
     Stats,
@@ -15,42 +14,52 @@ from .models import (
 from .serializers import Serializer
 from .utils import get_logger, setup_logging
 
-
 class Executor:
     logger: Logger = None
-    app_stats: AppStats = None
     settings: Settings = None
+
     response_cache: BaseCache = None
     origin_cache: BaseCache = None
+
     origin_fetcher: OriginFetcher = None
+
     response_serializer: Serializer = None
     transforms_path: Path = None
+    app_stats: AppStats = None
 
     @classmethod
-    async def async_create(cls, settings: Settings) -> "Executor":
+    async def async_create(cls) -> "Executor":
         self = cls.__new__(cls)
+
+        try:
+            settings = Settings.load()
+            # print(f"settings={settings.model_dump_json(indent=2)}")
+        except Exception as e:
+            # printing as logging was not setup yet
+            print(f"Settings validation failed: {e}")
+            raise
+
         self.settings = settings
 
         setup_logging(settings.logging)
         self.logger = get_logger()
-        self.logger.info("Logging initialized")
-        self.logger.debug(f"settings: {settings.model_dump()}")
+        self.logger.info(f"Logging initialized for settings.logging={settings.logging} with level={self.logger.level}")
+        self.logger.debug(f"settings: {settings.model_dump_json(indent = 2)}")
 
         self.logger.info(
             f"ASG Runtime is starting with:"
-            f"Response cache: {'enabled' if settings.caching.use_response_cache else 'disabled'}, "
-            f"Origin cache: {'enabled' if settings.caching.use_origin_cache else 'disabled'}, "
+            f"Response cache: {'enabled' if settings.response_cache.enabled else 'disabled'}, "
+            f"Origin cache: {'enabled' if settings.origin_cache.enabled else 'disabled'}, "
             f"Executor encodes: {settings.executor_encodes_responses}"
         )
 
         # ------------------ Response cache setup ------------------
-        if settings.caching.use_response_cache:
+        if settings.response_cache.enabled:
             self.logger.debug("initializing response cache")
             self.response_cache = await async_create_cache(
-                backend=settings.caching.response_cache_backend,
-                config=settings.caching.response_cache_config,
+                config=settings.response_cache,
                 encoding=settings.derived_rsp_cache_serializer,
-                purpose=CacheRoles.response,
+                check=False
             )
             self.logger.debug(f"response cache created: {self.response_cache.describe()}")
         else:
@@ -58,13 +67,12 @@ class Executor:
             self.response_cache = None
 
         # ------------------ Origin cache setup ------------------
-        if settings.caching.use_origin_cache:
+        if settings.origin_cache.enabled:
             self.logger.debug("initializing origin cache")
             self.origin_cache = await async_create_cache(
-                backend=settings.caching.origin_cache_backend,
-                config=settings.caching.origin_cache_config,
+                config=settings.origin_cache,
                 encoding=settings.origin_encoding,
-                purpose=CacheRoles.origin,
+                check=True
             )
             self.logger.debug(f"origin cache created: {self.origin_cache.describe()}")
         else:
@@ -83,11 +91,13 @@ class Executor:
             cache=self.origin_cache,
         )
 
+        # TODO enable loading transforms on init
+        # currently methods are loaded for every request
         self.transforms_path = settings.transforms_path
         self.app_stats = AppStats()
 
         self.logger.debug("initialization completed, good to go :-)")
-        self.logger.info("ASG Runtime is up, you can use the SFDP")
+        self.logger.info("ASG Runtime is up. SFDP is ready to get requests.")
         return self
 
     def __init__(self):
@@ -101,7 +111,7 @@ class Executor:
             origin_cache=self.origin_cache.get_stats() if self.origin_cache else None,
             responce_encoder=self.response_serializer.get_stats()
         )
-        self.logger.info(f"SFDP app shutting down, stats={stats.describe()}")
+        self.logger.info(f"ASG Runtime is shutting down, stats={stats.describe()}")
         # TODO check what needs to be cleanup
         return
     
@@ -110,6 +120,10 @@ class Executor:
     def get_app_stats(self) -> AppStats:
         return self.app_stats
 
+    def get_settings(self) -> dict:
+        # TODO create proper settings output
+        return self.settings.present()
+    
     def get_stats(self) -> dict:
         stats = {
             "app" : self.app_stats.describe(),
@@ -297,7 +311,7 @@ class Executor:
 
 # ------------------------------ test -------------------
 async def main(times: int | None = 2):
-    settings = Settings()
+    # settings = Settings()
     executor = await Executor.async_create(settings)
     logger = get_logger("executor-test")
 

@@ -3,8 +3,8 @@ from functools import lru_cache
 from ..models import (
     CacheBackends,
     CacheConfig,
-    CacheConfigLRU,
-    CacheRoles,
+    CacheConfigLru,
+
 )
 from ..serializers import Serializer
 from ..utils import get_logger
@@ -19,9 +19,6 @@ class LRUCache(BaseCache):
     def requires_encoding(cls) -> bool:
         return False
 
-    @classmethod
-    def requires_purpose(cls) -> bool:
-        return False
 
     @classmethod
     def requires_await(cls) -> bool:
@@ -32,17 +29,15 @@ class LRUCache(BaseCache):
         return CacheBackends.lru
 
     def __init__(
-        self, config: CacheConfig, serializer: Serializer, purpose: CacheRoles | None = None
-    ):
+        self, config: CacheConfig, serializer: Serializer):
         logger.debug("init enter")
-        super().__init__(config=config, serializer=serializer, purpose=purpose)
+        super().__init__(config=config, serializer=serializer)
 
         self._cache = {}
 
-        self.config = config
-        if isinstance(config.custom, CacheConfigLRU):
-            self.customConfig: CacheConfigLRU = config.custom
-            self.max_items = self.customConfig.cache_lru_max_items
+        if isinstance(config.backend_cfg, CacheConfigLru):
+            self.customConfig: CacheConfigLru = config.backend_cfg
+            self.max_items = self.customConfig.lru_max_items
             logger.debug(f"initializing internal gettter for max_items={self.max_items}")
 
             @lru_cache(maxsize=self.max_items)
@@ -51,7 +46,7 @@ class LRUCache(BaseCache):
 
         else:
             raise RuntimeError(
-                f"LRUCache initiated with config type {config.custom.__class__.__name__}"
+                f"LRUCache initiated with config type {config.backend_cfg.__class__.__name__}"
             )
 
         self._lru_get = _inner

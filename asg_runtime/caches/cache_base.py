@@ -5,7 +5,6 @@ from ..models import (
     CacheBackends,
     CacheConfig,
     CachedHeaders,
-    CacheRoles,
     CacheStats,
 )
 from ..serializers import Serializer
@@ -27,10 +26,6 @@ class BaseCache(ABC):
         raise NotImplementedError
 
     @classmethod
-    def requires_purpose(cls) -> bool:
-        raise NotImplementedError
-
-    @classmethod
     def requires_await(cls) -> bool:
         raise NotImplementedError
 
@@ -39,7 +34,7 @@ class BaseCache(ABC):
         raise NotImplementedError
 
     def __init__(
-        self, config: CacheConfig, serializer: Serializer, purpose: CacheRoles | None = None
+        self, config: CacheConfig, serializer: Serializer, 
     ):
         logger.debug("init enter")
 
@@ -49,6 +44,8 @@ class BaseCache(ABC):
         self.serializer = serializer
         self.stats.serializer_stats = self.serializer.get_stats()
         self._base_initialized = True
+
+        logger.debug(f"init exit id={self.backend_id}")
 
     def check_init(self):
         if not getattr(self, "_base_initialized", False):

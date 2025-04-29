@@ -1,5 +1,10 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator
+)
 
 class BaseStatsModel(BaseModel):
     model_config = ConfigDict(validate_assignment=True)

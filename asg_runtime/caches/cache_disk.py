@@ -7,7 +7,7 @@ from ..models import (
     CacheBackends,
     CacheConfig,
     CacheConfigDisk,
-    CacheRoles,
+
 )
 from ..serializers import Serializer
 from ..utils import get_logger
@@ -25,10 +25,6 @@ class DiskCache(BaseCache):
         return True
 
     @classmethod
-    def requires_purpose(cls) -> bool:
-        return True
-
-    @classmethod
     def requires_await(cls) -> bool:
         return False
 
@@ -36,27 +32,18 @@ class DiskCache(BaseCache):
     def backend_name(cls) -> CacheBackends:
         return CacheBackends.disk
 
-    def __init__(self, config: CacheConfig, serializer: Serializer, purpose: CacheRoles):
+    def __init__(self, config: CacheConfig, serializer: Serializer):
         logger.debug("init enter")
-        super().__init__(config=config, serializer=serializer, purpose=purpose)
+        super().__init__(config=config, serializer=serializer)
 
-        if not isinstance(config.custom, CacheConfigDisk):
+        if not isinstance(config.backend_cfg, CacheConfigDisk):
             raise RuntimeError(
-                f"DiskCache initiated with config type {config.custom.__class__.__name__}"
+                f"DiskCache initiated with config type {config.backend_cfg.__class__.__name__}"
             )
 
-        customConfig: CacheConfigDisk = config.custom
-        base_path = customConfig.cache_disk_path
-        if purpose == CacheRoles.response:
-            subdir_name = customConfig.response_subdir
-        elif purpose == CacheRoles.origin:
-            subdir_name = customConfig.origin_subdir
-        else:
-            logger.debug("bad parameter for cache purpose, should never be here")
-            raise RuntimeError(f"DiskCache initiated with purpose={purpose.value}")
-
-        self.disk_dir = base_path / subdir_name
-        self._cache = diskcache.Cache(self.disk_dir)
+        customConfig: CacheConfigDisk = config.backend_cfg
+        self.disk_path = customConfig.disk_path
+        self._cache = diskcache.Cache(self.disk_path)
 
         if not hasattr(self, "stats"):
             raise RuntimeError("Base class __init__ not called — stats missing")
@@ -81,7 +68,7 @@ class DiskCache(BaseCache):
 
     async def _async_clear(self):
         self._cache.clear()
-        logger.debug(f"Cleared disk cache at {self.disk_dir}")
+        logger.debug(f"Cleared disk cache at {self.disk_path}")
 
     # def describe(self):
     #     base = super().describe()
@@ -99,7 +86,7 @@ class DiskCache(BaseCache):
         base = super().describe()
 
         base["diskcache_only"] = {
-            "disk_dir": self.disk_dir,
+            "disk_path": self.disk_path,
             "directory": self._cache.directory,
             "size": self._cache.volume(),
             "count": len(self._cache),

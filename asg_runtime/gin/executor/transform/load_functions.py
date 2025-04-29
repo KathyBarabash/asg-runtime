@@ -32,10 +32,12 @@ def load_user_functions(folder_path=None):
             logger.debug(f"trying to load module {module_name} from {module_path}")
             try:
                 spec = importlib.util.spec_from_file_location(module_name, module_path)
+                logger.debug(f"spec={spec}")
                 module = importlib.util.module_from_spec(spec)
+                logger.debug(f"module={module}")
                 spec.loader.exec_module(module)
-            except Exception:
-                logger.debug(f"failed to load module {module_name} from {module_path}")
+            except Exception as e:
+                logger.debug(f"failed to load module {module_name} from {module_path}: {e}")
                 pass
 
             # Get all callable functions from the module

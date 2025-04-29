@@ -1,36 +1,68 @@
 import logging
+import os
 
 from rich.logging import RichHandler
 
 from ..models import LogFlavors, LoggingSettings
 
 DEFAULT_LOGGER = "asg_runtime"
-
-
-def get_logger(name: str = DEFAULT_LOGGER) -> logging.Logger:
-    logger = logging.getLogger(name)
-    logger.propagate = True  # Allow messages to propagate to app root logger
-    return logger
-
+_LOGGING_INITIALIZED = False
 
 def setup_logging(settings: LoggingSettings | None = None, name: str | None = DEFAULT_LOGGER):
+    """
+    Smart setup for logging.
+    - If settings are given: honor them.
+    - If no settings and running inside pytest or ASG_DEV_LOGGING=true: setup DEV logging.
+    - Else: setup safe production logging.
+    """
+    
+    global _LOGGING_INITIALIZED
+    # print(f"setup_logging enter for settings={settings}, _LOGGING_INITIALIZED={_LOGGING_INITIALIZED}")
+    if _LOGGING_INITIALIZED:
+        return
+
+    dev_mode = (
+        "PYTEST_CURRENT_TEST" in os.environ
+        or os.getenv("ASG_DEV", "").lower() == "true"
+    )
 
     if not settings:
-        settings = LoggingSettings()
+        if dev_mode:
+            # Dev or test mode
+            settings = LoggingSettings(
+                log_level="DEBUG",
+                logging_flavor=LogFlavors.rich,
+            )
+        else:
+            # Normal production mode
+            settings = LoggingSettings(
+                log_level="INFO",
+                logging_flavor=LogFlavors.plain,
+            )
 
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
     handlers = get_flavored_handlers(settings.logging_flavor)
+
     logging.basicConfig(
         level=log_level,
         handlers=handlers,
         force=True,
     )
 
-    return
+    _LOGGING_INITIALIZED = True
 
+def get_logger(name: str = DEFAULT_LOGGER) -> logging.Logger:
+    if name is None:
+        # Dynamically infer the caller's module name
+        frame = inspect.stack()[1]
+        module = inspect.getmodule(frame[0])
+        name = module.__name__ if module else DEFAULT_LOGGER
+        
+    logger = logging.getLogger(name)
+    logger.propagate = True
+    return logger
 
 # ------------ private stuff -------------------------
-
 
 def get_flavored_handlers(flavor):
     handlers = []

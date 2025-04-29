@@ -1,10 +1,9 @@
 try:
-    # import aioredis  # Lazy import
     import redis.asyncio as redis
 except ImportError:
-    raise ImportError("The 'aioredis' package is required for redis caching.")
+    raise ImportError("The 'redis' package is required for redis caching.")
 
-from ..models import CacheBackends, CacheConfig, CacheConfigRedis, CacheRoles
+from ..models import CacheBackends, CacheConfig, CacheConfigRedis
 from ..serializers import Serializer
 from ..utils import get_logger
 from .cache_base import BaseCache
@@ -17,11 +16,7 @@ class RedisCache(BaseCache):
     @classmethod
     def requires_encoding(cls) -> bool:
         return True
-
-    @classmethod
-    def requires_purpose(cls) -> bool:
-        return False
-
+    
     @classmethod
     def requires_await(cls) -> bool:
         return True
@@ -31,22 +26,18 @@ class RedisCache(BaseCache):
         return CacheBackends.redis
 
     def __init__(
-        self, config: CacheConfig, serializer: Serializer, purpose: CacheRoles | None = None
-    ):
+        self, config: CacheConfig, serializer: Serializer):
         logger.debug("init enter")
-        super().__init__(config=config, serializer=serializer, purpose=purpose)
+        super().__init__(config=config, serializer=serializer)
 
         self.config = config
-        if isinstance(config.custom, CacheConfigRedis):
-            self.customConfig: CacheConfigRedis = config.custom
-            self.redis_url = self.customConfig.cache_redis_url
-            self.redis_port = self.customConfig.redis_port
-            self.redis_host = self.customConfig.redis_host
-
+        if isinstance(config.backend_cfg, CacheConfigRedis):
+            self.customConfig: CacheConfigRedis = config.backend_cfg
+            self.redis_url = self.customConfig.redis_url
             self.redis = redis.from_url(self.redis_url)
         else:
             raise RuntimeError(
-                f"RedisCache initiated with config type {config.custom.__class__.__name__}"
+                f"RedisCache initiated with config type {config.backend_cfg.__class__.__name__}"
             )
 
         if not hasattr(self, "stats"):

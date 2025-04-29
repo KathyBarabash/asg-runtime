@@ -1,12 +1,61 @@
-import logging
-from enum import Enum
+import os
 from pathlib import Path
-
-from pydantic import Field, model_validator
+from dotenv import dotenv_values
+from typing import Annotated
+from pydantic import BaseModel, Field, ValidationError, model_validator
+from enum import Enum
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import logging
+logger = logging.getLogger("settings")
 
+#------------------ models -----------------------
+class LogFlavors(str, Enum):
+    rich = "rich"
+    plain = "plain"
+    json = "json"
 
-# ------------ seed in the config for all the models ------------------
+# Logging
+class LoggingSettings(BaseModel):
+    log_level: str
+    logging_flavor: LogFlavors
+
+# HTTP settings
+class HttpSettings(BaseModel):
+    http_timeout: Annotated[int, Field(strict=True, ge=0)]
+    http_max_pages: Annotated[int, Field(strict=True, ge=0)]
+    http_max_retries: Annotated[int, Field(strict=True, ge=0)]
+    http_retry_backoff: Annotated[float, Field(strict=True, ge=0.0)]
+
+class Encodings(str, Enum):
+    noop = "noop"
+    pickle = "pickle"
+    orjson = "orjson"
+
+class CacheRoles(str, Enum):
+    response = "response"
+    origin = "origin"
+
+class CacheBackends(str, Enum):
+    redis = "redis"
+    disk = "disk"
+    lru = "lru"
+
+# Cache backend configs
+class CacheConfigLru(BaseModel):
+    lru_max_items: Annotated[int, Field(strict=True, ge=0)]
+
+class CacheConfigDisk(BaseModel):
+    disk_path: Path
+
+class CacheConfigRedis(BaseModel):
+    redis_url: str
+
+class CacheConfig(BaseModel):
+    enabled: bool
+    backend: CacheBackends
+    backend_cfg: CacheConfigLru | CacheConfigDisk | CacheConfigRedis
+
+# --------------------------- settings ------------------------
 class MyBaseSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -15,253 +64,238 @@ class MyBaseSettings(BaseSettings):
         case_sensitive=False,
     )
 
+class Settings(MyBaseSettings):
+    service_name: str = "default svc name"
+    transforms_path: Path = Path("./default")
 
-# ------------ logging ------------------------------------------------
-class LogFlavors(str, Enum):
-    rich = "rich"
-    plain = "plain"
-    json = "json"
+    log_level: str = "INFO"
+    logging_flavor: str = "rich"
 
+    origin_cache_enabled: bool = False
+    origin_cache_backend: str = "lru"
+    origin_cache_lru_max_items: Annotated[int | None, Field(strict=True, ge=0)] = None
+    origin_cache_disk_path: Path | None = None
+    origin_cache_redis_url: str | None = None
 
-class LoggingSettings(MyBaseSettings):
-    log_level: str = Field(
-        default=logging.getLevelName(logging.INFO),
-        description= \
-        f"Control the logging level, choose between: {logging.getLevelNamesMapping().keys()}.",
-    )
-    logging_flavor: LogFlavors = Field(
-        default=LogFlavors.rich,
-        description= \
-        f"Control the logging flavor, choose between: {LogFlavors._member_names_}",
-    )
+    response_cache_enabled: bool = False
+    response_cache_backend: str = "lru"
+    response_cache_lru_max_items: Annotated[int | None, Field(strict=True, ge=0)] = None
+    response_cache_disk_path: Path | None = None
+    response_cache_redis_url: str | None = None
 
-# ------------ data serialization -------------------------------------
+    http_timeout: Annotated[int, Field(strict=True, ge=0)] = 11
+    http_max_pages: Annotated[int, Field(strict=True, ge=0)] = 11
+    http_max_retries: Annotated[int, Field(strict=True, ge=0)] = 11
+    http_retry_backoff: Annotated[float, Field(strict=True, ge=0.0)] = 0.1
 
+    enable_metrics: bool = True
+    response_encoding: Encodings = Encodings.orjson
+    origin_encoding: Encodings = Encodings.orjson
 
-class Encodings(Enum):
-    noop = "noop"
-    pickle = "pickle"
-    orjson = "orjson"
-
-
-# ------------ caching ------------------------------------------------
-
-
-class CacheBackends(str, Enum):
-    redis = "redis"
-    disk = "disk"
-    lru = "lru"
-
-
-class CacheRoles(str, Enum):
-    response = "response"
-    origin = "origin"
-
-
-class CacheConfigRedis(MyBaseSettings):
-    cache_redis_url: str = Field(
-        default="redis://localhost:6379", description="URL of the redis server")
-    cache_redis_db: int = Field(default=0)
-
-
-class CacheConfigDisk(MyBaseSettings):
-    cache_disk_path: Path = Field(
-        default=Path("./sfdp_cache"), 
-        description="Path to a directory where the caches are located"
-    )
-
-class CacheConfigLRU(MyBaseSettings):
-    cache_lru_max_items: int = Field(default=100)
-
-
-class CacheConfig(MyBaseSettings):
-    cache_ttl_seconds: int = Field(
-        default=3600, description="TTL for result data cache in seconds")
-    cache_namespace: str | None = "default"
-    custom: CacheConfigLRU | CacheConfigDisk | CacheConfigRedis = CacheConfigLRU()
-
-    # def __init__(self, backend: CacheBackends):
-    #     match backend:
-    #         case CacheBackends.lru:
-    #             self.custom = CacheConfigLRU()
-    #         case CacheBackends.disk:
-    #             self.custom = CacheConfigDisk()
-    #         case CacheBackends.redis:
-    #             self.custom = CacheConfigRedis()
-    #         case _:
-    #             raise ValueError(f"Unknown cache backend: {backend}")
-
-class CachingSettings(MyBaseSettings):
-    use_origin_cache: bool = Field(default=True, description="Enable caching of origin data")
-    origin_cache_backend: CacheBackends = Field(
-        default=CacheBackends.lru,
-        description= \
-            f"Control the origin caching backend, choose between: {CacheBackends._member_names_}",
-    )
-    origin_cache_config: CacheConfig = CacheConfig()
-
-    use_response_cache: bool = Field(
-        default=True, description="Enable caching of transformed response data"
-    )
-    response_cache_backend: CacheBackends = Field(
-        default=CacheBackends.lru,
-        description= \
-            f"Control the response caching backend, choose between: {CacheBackends._member_names_}",
-    )
-    response_cache_config: CacheConfig = CacheConfig()
-        
+    # def __init__(self, **kwargs):
+    #     logger.debug("⚡ Settings kwargs at creation:", kwargs)
+    #     super().__init__(**kwargs)
 
     @classmethod
-    def get_cache_config_type(cls, backend: CacheBackends) -> type[CacheConfig]:
-        match backend:
-            case CacheBackends.lru:
-                return CacheConfigLRU
-            case CacheBackends.disk:
-                return CacheConfigDisk
-            case CacheBackends.redis:
-                return CacheConfigRedis
-            case _:
-                raise ValueError(f"Unknown cache backend: {backend}")
-    
+    def load(cls, env_file: str | None = ".env") -> "Settings":
+        """Load settings, prefer real environment vars, fallback to .env."""
+        env_data = {}
+        dotenv = load_env_settings(env_file)
+
+        # loop for model fields, prefer getenv over .env
+        for field in cls.model_fields.keys():
+            value = os.getenv(f"ASG_{field.upper()}")  
+            if not value and dotenv:
+                value = dotenv.get(field)
+                
+            if value:
+                logger.debug(f"field={field}, value={value}")
+                env_data[field] = cls._parse_value(value)
+            else:
+                logger.debug(f"field={field} - no value, will use default")
+
+        return cls(**env_data)
+
     @staticmethod
-    def custom_backend_matches_config(custom, backend):
-        backend_to_type = {
-            CacheBackends.lru: CacheConfigLRU,
-            CacheBackends.redis: CacheConfigRedis,
-            CacheBackends.disk: CacheConfigDisk,
-        }
-        expected_type = backend_to_type.get(backend)
-        return isinstance(custom, expected_type), expected_type
+    def _parse_value(value: str):
+        """Parse simple types from string."""
+        value = value.strip()
+
+        if value.lower() in {"true", "1", "yes"}:
+            return True
+        if value.lower() in {"false", "0", "no"}:
+            return False
+
+        # parse numbers carefully
+        try:
+            if value.isdigit():
+                return int(value)
+            if value.replace(".", "", 1).isdigit() and value.count(".") == 1:
+                return float(value)
+        except ValueError:
+            pass
+
+        return value
     
     @model_validator(mode="after")
-    def validate_origin_cache(self) -> "CachingSettings":
-        if self.use_origin_cache and not self.custom_backend_matches_config(
-            self.origin_cache_config.custom, 
-            self.origin_cache_backend):
-            raise ValueError(
-                f"Origin cache misconfigured: backend '{self.origin_cache_backend}' requires a matching custom config"
-            )
+    def validate_cache_backends(self):
+        """Ensure correct backend fields are set."""
+        logger.debug(f"\nraw settings:\n{self.model_dump_json(indent=2)}")
+        for role in CacheRoles._member_names_:
+            enabled = getattr(self, f"{role}_cache_enabled")
+            backend = getattr(self, f"{role}_cache_backend")
 
-        if self.use_response_cache and not self.custom_backend_matches_config(
-            self.response_cache_config.custom, 
-            self.response_cache_backend):
-            raise ValueError(
-                f"Response cache misconfigured: backend '{self.response_cache_backend}' requires a matching custom config"
-            )
-        return self
+            logger.debug(f"validating for role={role}, enabled={enabled}, backend={backend}")
 
+            if not enabled:
+                continue  # if disabled, skip validation
 
-# ------------ http ------------------------------------------------
+            if backend == CacheBackends.lru:
+                logger.debug(f"backend is lru")
+                if getattr(self, f"{role}_cache_lru_max_items", None) is None:
+                    raise ValueError(f"{role}_cache_lru_max_items must be set for backend 'lru'")
 
+            if backend == CacheBackends.disk:
+                if getattr(self, f"{role}_cache_disk_path", None) is None:
+                    raise ValueError(f"{role}_cache_disk_path must be set for backend 'disk'")
 
-class HttpSettings(MyBaseSettings):
-    http_timeout: int = Field(
-        default=10, description="Timeout for external API calls")
-    http_max_pages: int = Field(
-        default=10, description="Max number of pages to fetch from API calls")
-    http_max_retries: int = Field(
-        default=3, description="Max retries for external API calls")
-    http_retry_backoff: float = Field(
-        default=0.5, description="Retry backoff for external API calls"
-    )
-
-#------------- messaging -----------------------------------------------
-
-class Messages(MyBaseSettings):
-    no_response_cache: str = (
-        "no response cache exist, please adjust settings or contact service operators"
-    )
-    no_origin_cache: str = (
-        "no origin cache exist, please adjust settings or contact service operators"
-    )
-    response_cache_cleared: str = "response cache cleared"
-    origin_cache_cleared: str = "origin cache cleared"
-
-    invalid_endpoint_spec: str = "invalid endpoint spec"
-    failed_to_fetch_data: str = "failed to fetch some of the data required to serve the result"
-
-
-# ------------ now define the settings ------------------------------------------------
-
-
-class Settings(MyBaseSettings):
-    service_name: str = Field(default="SFDP", description="Name of the FastAPI service")
-
-    logging: LoggingSettings = LoggingSettings()
-
-    caching: CachingSettings = Field(default_factory=CachingSettings)
-
-    http: HttpSettings = HttpSettings()
-
-    enable_metrics: bool = Field(default=True, description="Enable Prometheus metrics")
-
-    response_encoding: Encodings = Field(
-        default=Encodings.orjson,
-        description=f"Control the logging flavor, choose between: {Encodings._member_names_}",
-    )
-
-    origin_encoding: Encodings = Field(
-        default=Encodings.orjson,
-        description=f"Control the logging flavor, choose between: {Encodings._member_names_}",
-    )
-
-    transforms_path: Path = Field(
-        default=Path("./transforms"), description="Path to a directory where the caches are located"
-    )
-
-    msgs: Messages = Messages()
-
-    @model_validator(mode="after")
-    def validate_settings(self) -> "Settings":
-        # --- Cache consistency checks ---
-        if self.caching.use_origin_cache and not self.caching.origin_cache_backend:
-            raise ValueError("Origin cache is enabled but no backend is configured for it.")
-
-        if self.caching.use_response_cache and not self.caching.response_cache_backend:
-            raise ValueError("Response cache is enabled but no backend is configured for it.")
+            if backend == CacheBackends.redis:
+                if (getattr(self, f"{role}_cache_redis_url", None) is None):
+                    raise ValueError(f"{role}_cache_redis_url must be set for backend 'redis'")
 
         return self
+    
+        # Properties
 
+    @property
+    def logging(self) -> LoggingSettings:
+        return LoggingSettings(
+            log_level=self.log_level,
+            logging_flavor=self.logging_flavor,
+        )
+    
+    @property
+    def http(self) -> HttpSettings:
+        return HttpSettings(
+            http_timeout=self.http_timeout,
+            http_max_pages=self.http_max_pages,
+            http_max_retries=self.http_max_retries,
+            http_retry_backoff=self.http_retry_backoff,
+        )
+    
+    @property
+    def origin_cache(self) -> CacheConfig:
+        return CacheConfig(
+            enabled=self.origin_cache_enabled,
+            backend=self.origin_cache_backend,
+            backend_cfg=self._build_backend_cfg(
+                backend=self.origin_cache_backend,
+                lru_max_items=self.origin_cache_lru_max_items,
+                disk_path=self.origin_cache_disk_path,
+                redis_url=self.origin_cache_redis_url,
+            ),
+        )
+    
+    @property
+    def response_cache(self) -> CacheConfig:
+        return CacheConfig(
+            enabled=self.response_cache_enabled,
+            backend=self.response_cache_backend,
+            backend_cfg=self._build_backend_cfg(
+                backend=self.response_cache_backend,
+                lru_max_items=self.response_cache_lru_max_items,
+                disk_path=self.response_cache_disk_path,
+                redis_url=self.response_cache_redis_url,
+            ),
+        )
+    
     @property
     def executor_encodes_responses(self) -> bool:
         return (
-            not self.caching.use_response_cache
+            not self.response_cache.enabled
             or self.response_encoding == Encodings.orjson
         )
+    
+    @property
+    def derived_rsp_cache_serializer(self) -> Encodings:
+        return Encodings.noop if self.executor_encodes_responses else self.response_encoding
+
 
     @property
     def derived_rsp_serializer(self) -> Encodings:
         return self.response_encoding if self.executor_encodes_responses else Encodings.noop
 
-    @property
-    def derived_rsp_cache_serializer(self) -> Encodings:
-        return Encodings.noop if self.executor_encodes_responses else self.response_encoding
+    def _build_backend_cfg(self, backend, *, lru_max_items, disk_path, redis_url):
+        if backend == CacheBackends.lru:
+            return CacheConfigLru(lru_max_items=lru_max_items)
+        elif backend == CacheBackends.disk:
+            return CacheConfigDisk(disk_path=disk_path)
+        elif backend == CacheBackends.redis:
+            return CacheConfigRedis(redis_url=redis_url)
+        else:
+            raise ValueError(f"Unknown backend type {backend}")
+        
 
-    def exposed(self) -> dict[str, any]:
-        result = {
+    def present(self) -> dict:
+        """Return a structured dict representing runtime settings."""
+        return {
             "service_name": self.service_name,
-            "log_level": self.logging.log_level,
             "transforms_path": str(self.transforms_path),
-            # "response_encoding": self.response_encoding,
-            "http_client": self.http.model_dump(),
+
+            "logging": {
+                "level": self.log_level,
+                "flavor": self.logging_flavor,
+            },
+
+            "origin_cache": {
+                "enabled": self.origin_cache.enabled,
+                "backend": self.origin_cache.backend,
+                "config": self.origin_cache.backend_cfg.model_dump(),
+            } if self.origin_cache.enabled else {"enabled": False},
+
+            "response_cache": {
+                "enabled": self.response_cache.enabled,
+                "backend": self.response_cache.backend,
+                "config": self.response_cache.backend_cfg.model_dump(),
+            } if self.response_cache.enabled else {"enabled": False},
+
+            "http_client": {
+                "timeout": self.http.http_timeout,
+                "max_pages": self.http.http_max_pages,
+                "max_retries": self.http.http_max_retries,
+                "retry_backoff": self.http.http_retry_backoff,
+            },
+
+            "metrics_enabled": self.enable_metrics,
+
+            "encoding": {
+                "response": self.response_encoding,
+                "origin": self.origin_encoding,
+            }
         }
 
-        if self.caching.use_response_cache:
-            result["response_cache"] = {
-                "type": self.caching.response_cache_backend,
-                "encoding": self.derived_rsp_cache_serializer,
-                "config": self.caching.response_cache_config.model_dump(),
-            }
-        else:
-            result["response_cache"] = "disabled"
+#------------------------------------------------------------------   
+def load_env_settings(env_file: str = ".env") -> dict[str, str]:
+    env_path = Path(env_file)
+    if not env_path.is_file():
+        return {}
 
-        if self.caching.use_origin_cache:
-            result["origin_cache"] = {
-                "type": self.caching.origin_cache_backend,
-                "encoding": self.origin_encoding,
-                "config": self.caching.origin_cache_config.model_dump(),
-            }
-        else:
-            result["origin_cache"] = "disabled"
+    values = dotenv_values(dotenv_path=env_path)
+    clean = {}
+    for k, v in values.items():
+        if v is not None:
+            clean_key = k.strip()
+            clean_value = v.strip()
+            clean[clean_key] = clean_value
+    return clean
 
-        return result
+if __name__ == "__main__":
+    import logging
+    logging.basicConfig(level="DEBUG")
+    logger = logging.getLogger()
+    try:
+        settings = Settings.load()
+        logger.debug(settings.model_dump_json(indent=2))
+    except ValidationError as e:
+        logger.debug("❌ Settings validation failed:")
+        logger.debug(e)
