@@ -54,6 +54,8 @@ asg-runtime/
 ├── README.md           # this file :-)
 ├── pyproject.toml      # Build system configuration
 ├── .env                # Example environment file
+├── Dockerfile          # Used to create base asg-runtime image (used by CI)
+├── .github/            # Github CI workflows
 ├── asg_runtime/        # Library sources
 │   ├── caches/         # Cache modules
 │   ├── gin/            # Gin dependencies
@@ -62,12 +64,14 @@ asg-runtime/
 │   ├── serializers/    # Object serialization modules
 │   ├── telemetry/      # TODO: Telemetry modules
 │   ├── utils/          # Shared utilities (e.g., logging)
-│   ├── __init__.py     # Exports Executor and Settings
+│   ├
+│   ├── __init__.py     # Mininal required exports 
 │   ├── executor.py     # Main library logic (Executor class)
-│   └── gin_helper.py   # Helper for data request processing
-├── docs/               # TODO: Documentation placeholder
+│   └── gin_helper.py   # Helper for data request processing (depends on GIN)
+├── docs/               # Documentation
 ├── test/               # Pytest tests, organized by topic
-│   ├── conftest.py     # Pytest configuration
+│   ├── pytest.ini      # Pytest configuration
+│   ├── conftest.py     # Pytest fixtures
 │   ├── 00_settings/
 │   ├── 01_spec/
 │   ├── 02_serializer/
@@ -88,3 +92,24 @@ To contribute to the library, you can
 ## Releases
 
 The library releases are versioned to help keeping the whole ASG system that includes the ASG-tool for generating the templated ASG-SFDP apps, the generated apps, and the ASG Library. Release process is described in [./docs/release.md](./docs/release.md).
+
+## Status
+
+Current commit [63d916d3](https://github.com/KathyBarabash/asg-runtime/commit/89678fd1dc7e904a3f88534a228c70da63d916d3requires) leaves the following to be done:
+
+- redo the test suite to support the refactored settings model 
+- improve startup errors reporting, in particular:
+  - Value error, origin_cache_lru_max_items must be set for backend 'lru'
+  - ImportError: The 'diskcache' package is required for disk caching.
+  - redis.exceptions.ConnectionError: ... connecting to localhost:6379.
+- figure out the bytes_served computation for app_stats
+  ```
+  "app": {
+      "requests_received": 2,
+      "requests_failed": 0,
+      "requests_served": 2,
+      "bytes_served": 1629942,
+      "processing_time": 27.66
+    },
+  ```
+- address code quality (ruff,etc.)
