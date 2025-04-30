@@ -1,0 +1,9 @@
+Framework / Tool,Maturity,Community & Ecosystem,License,Kubernetes Readiness,Notes
+Ollama,Medium (2023+),Growing, GitHub activity,MIT,Medium (via sidecar or job pods),Easy CLI and Docker support; fast to prototype
+LM Studio,Low,Small, mainly desktop users,Unknown,Low,GUI-focused, not suitable for automation
+vLLM,High,Active research/dev community,Apache 2.0,High,Excellent performance with batching; scalable
+Text Generation Inference (TGI),High,Strong support from Hugging Face,Apache 2.0,High,Designed for production inference, full REST API
+llama.cpp,High (C++-based),Very active, many wrappers,MIT,Medium (needs REST/gRPC wrapper),Lightweight and efficient; CLI or custom server required
+GPT4All,Medium,Moderate, good docs,Apache/MIT,Low–Medium,Better for desktop/offline GUI use
+DeepSpeed-MII,Medium–High,Research-focused,MIT,Medium–High,Needs setup, but great for high-performance inference
+AutoGPTQ / ExLlama,Medium,Niche but growing,Apache/MIT,Low–Medium,Optimized for quantized model inference, still maturing

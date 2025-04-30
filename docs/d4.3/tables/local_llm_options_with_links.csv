@@ -1,0 +1,9 @@
+Tool / Framework,Maturity,ommunity & Ecosystem,License,Kubernetes Readiness,Notes
+[Ollama](https://ollama.com),Medium (2023+),Growing, GitHub activity,MIT, yes,"Easy CLI and Docker support; fast to prototype"
+[LM Studio](https://lmstudio.ai),Low,"Small, mainly desktop users",Unknown,no,"GUI-focused, not suitable for automation"
+[vLLM](https://github.com/vllm-project/vllm),High,"Active research/dev community",Apache 2.0,yes,"Excellent performance with batching; scalable"
+[Text Generation Inference (TGI)](https://github.com/huggingface/text-generation-inference),High,"Strong support from Hugging Face",Apache 2.0,High,"Designed for production inference, full REST API"
+[llama.cpp](https://github.com/ggerganov/llama.cpp),High (C++-based),"Very active, many wrappers",MIT,Medium,"Lightweight and efficient; CLI or custom server required"
+[GPT4All](https://gpt4all.io),Medium,"Moderate, good docs","Apache/MIT",Low–Medium,"Better for desktop/offline GUI use"
+[DeepSpeed-MII](https://github.com/microsoft/DeepSpeed-MII),Medium–High,"Research-focused",MIT,Medium–High,"Needs setup, but great for high-performance inference"
+"AutoGPTQ / xLlama","Med - ium","Niche but growing","Apache/MIT","Low–Medium","Optimized for quantized model inference, still maturing"
