@@ -203,26 +203,27 @@ This section provides the high level design of the ASG subsystem, starting with 
 TBD – few words to enter, talk about benefits of using LLMs for data management
 
 #### The GIN Library
-As was already presented in D4.2 [TBD - add reference], SFDP generation relies on the LLM-driven GIN library, developed in IBM Research and becoming widely used internally both for research and for contributing to the upcoming data management products. GIN library is made available to the TEADAL project team as a dependency, in form of a python package. 
-
-the main exported constructs of GIN library relevant to this documents are:
+As was already presented in D4.2 [TBD - add reference], SFDP generation relies on the LLM-driven GIN library, developed in IBM Research and becoming widely used internally both for research and for contributing to the upcoming data management products. Without repeating the already reported GIN library details, we present the main exported constructs of GIN library relevant to this documents, for completeness:
 - GIN Connector Specification - a set of pydantic models that cover internalization of every aspect of OpenAPI specification and a module that parses the standard OpenAPI specification files to fill in parts of GIN Connector Spec
 - GIN Spec Generator - a module that generates the GIN Connector Specification for a given request
 - GIN Spec Parser - a module that parses the GIN Connector Specification embeded into the generated SFDPs, producing the list of endpoints to fetch from the origin FDP and the list of transorms to apply to the fetched dataset to produce the result expected by the SFDP spec.
 - GIN Executor - a module that takes in the parsed Connector Specification and executes it by: 1. fetching the origin data and 2. loading and applying the required data transformations.
 
-Since its first presentation in D4.2, the library has been adapted, specifically for the TEADAL use case, to support autogenerating SFDPs using local inference endpoints with ollama (see details below) backed up by community models. 
+GIN Connector Specification module is basic and is included in all the other modules. GIN Spec Generator module is closed-source and provided to the TEADAL project team as a dependency, in form of a python package. GIN Spec Parser and GIN Executor are open and used as a basis for the TEADAL ASG-runtime library (details follow).
+
+Since its first presentation in D4.2, the library has been adapted, specifically for the TEADAL use case, to support autogenerating SFDPs using local inference endpoints with ollama (details follow) backed up by community models. 
 
 #### Ollama Service
 To avoid reliance on expensive or intermittently available cloud-based LLM services, we focused on enabling offline-compatible generation of SFDPs. For this, we first selected Ollama among all the options for the local model and inference serving [TBD - expand on local inference options, possibly with comparisin table including maturity, community, support, license, k8s-readiness etc.]. 
 To support the generation of the Shared Federated Data Products without relying on expensive and not always available LLM services, we had to establish the possibility for offline usage of the GIN library. For this, we first selected **Ollama** among all the options for local model hosting and inference serving. Ollama stood out due to its ease of use, cross-platform support, and built-in model management. However, our decision was informed by a broader review of local inference options, summarized in the table below:
 
+<!-- the table is currently included as csv and as apng rendered from it -->
 [Table X csv : Comparison of Local LLM Inference Options](tables/local_llm_options.csv)          
 ![Table X png: Comparison of Local LLM Inference Options](./tables/local_llm_options_with_links.png)
 
-Each option was evaluated for its suitability in constrained, potentially air-gapped environments, as well as its compatibility with Kubernetes-based deployments. While more performant frameworks like **vLLM** and **TGI** offer production-grade scalability, they tend to have a steeper learning curve and more infrastructure requirements. **Ollama** offered a pragmatic middle ground, with a strong local-first philosophy, simple deployment using Docker, and an evolving ecosystem of compatible models.
+Each option was evaluated for its suitability in constrained, potentially air-gapped environments, as well as its compatibility with Kubernetes-based deployments. While more performant frameworks like **vLLM** and **TGI** offer production-grade scalability, they tend to have a steeper learning curve and more infrastructure requirements, e.g. avanced GPUs, etc. **Ollama** offers a pragmatic middle ground, with a strong local-first philosophy, simple deployment using Docker, and an evolving ecosystem of compatible models. In addition, Ollama community has proven to be one of the first to adopt the codebase to the latest feature additions of the OpenAI such as (functions calling)[https://platform.openai.com/docs/guides/function-calling] and (structured outputs)[https://platform.openai.com/docs/guides/structured-outputs].
 
-Then, we have adapted the GIN library to be able to work with Ollama and have selected several models available in the community and capable of delivering the inference results required by GIN library. Namely, GIN library, which in-house uses the advanced `granite-code-instruct` models family, relies on model's ability to support tool calling and structured output. In TEADAL, we have adapted the compatible `granite-code` models family available in the Ollama Library (https://ollama.com/library). 
+Then, we have adapted the GIN library to be able to work with Ollama and have selected several models available in the community and capable of delivering the inference results required by GIN library. Namely, GIN library, which in-house uses the advanced `granite-code-instruct` models family, relies on model's ability to support tool calling and structured output. In TEADAL, we have adapted the compatible `granite-code` models family available in the (Ollama Library)[https://ollama.com/library]. 
 
 In addition, we have integrated the ollama service as part of the TEDAL Node, as app-level-service than can be enabled on any TEADAL Node. If enabled, the service can be also used for other inference jobs, both by additional TEADAL services and, in the future, by the data analytics workflow put together by federation partners and users. (todo – add reference to a platform integration section below)
 
@@ -248,6 +249,7 @@ ASG achieves its goals through its three major components:
 - The ASG-runtime – a library that backs-up the execution of the ASG- compliant SFDP servers, implementing all the heavy lifting: parsing the GIN connector Specification included in the SFDP; performing the http access to source FDPs; caching the data (with possibility of sharing among SFDPs deployed in the same environment); applying the transformation pipeline; error handling, etc., up to providing data to the SFDP endpoints at runtime.
 
 Component Diagram: 
+<!-- the diargam is currently included as mermaid, will be rendered later -->
 ```mermaid
 graph TD
     subgraph dep[ASG Dependencies]
@@ -345,7 +347,7 @@ The library is designed to be modular, versioned, easily testable, and geared to
 - pulling the sources or the build release (archive) from git and importing it into the environment where the SFDP will run. This can be usefull for local testing by developers.
 - using the base image that includes the asg-library for creating the SFDP image. this way is preferable for the automated image creation as it simplifies and speeds up image creation by eliminating the need to pull and build library sources every time SFDP image is created.
 
-### Software Architecture
+### The ASG Software Architecture
 In this section we zoom into the lower level of abstraction and present how the ASG components are realised in software. All the code is written in python 3.12 and is available in TEADAL's gitlab.
 
 #### ASG-tool
@@ -400,6 +402,8 @@ Each entry under `sfdp_endpoints` represents one data endpoint to be included in
 
 		- `description`: This key is required and must contain a string describing this property. This is used by the GIN generator to derive the way this property can be constructed from the data exposed by the source FDP endpoint, namely to select the right set of transforms for the transforms library to be applied to the origin dataset.
 
+ASG-tool documentation along with installation and usage instructions can be found in the project repository on [gitlab](https://gitlab.teadal.ubiwhere.com/teadal-tech/asg_generation_code).
+
 #### ASG-runtime
 
 ASG-runtime library is architected to ensure:
@@ -413,9 +417,24 @@ Keeping cache backends and HTTP boilerplate in separate modules makes the system
 - Flexibility:
 You can easily swap in new cache backends, plug in new data sources, or change transformation logic with minimal impact to the FastAPI app code.
 
-In what follows we briefly describe indidual modules.
+ASG-runtime documentation along with installation and usage instructions can be found in the project repository on [gitlab](https://gitlab.teadal.ubiwhere.com/teadal-tech/asg-runtime).
 
-##### Settings Module
+In what follows we briefly describe the most important indidual modules that comprise the ASG-runtime library to realize its functionality. For ease of reference, here is a brief repository structure:
+```text
+├── asg_runtime/     
+│   ├── executor.py         # Main library logic (Executor class)
+│   ├── request_driver.py   # Helper for data request processing (depends on GIN)   
+│   
+│   ├── caches/         # Cache modules
+│   ├── gin/            # Gin dependencies - GIN Connector spec, Gin Parser, and GIN executor
+│   ├── http/           # HTTP client functionality
+│   ├── models/         # Shared data models - defines structures for settings, cached, stats, etc.
+│   ├── serializers/    # Serialization modules
+│   ├── telemetry/      # Telemetry modules
+│   ├── utils/          # Shared utilities (e.g., for logging)
+```
+
+##### The Settings Module
 Settings mechanism is based on Pydantic v2 settings, allowing:
 - Per-app customization to disable or enable the caches, to select the caching backend with its related parameters, to controll logging, http behaviour, etc.
 - Loading from environment variables or .env files
@@ -425,52 +444,183 @@ Settings mechanism is based on Pydantic v2 settings, allowing:
 
 The settings are loaded only once at SFDP app startup, from inside the library, and used for the system initialization. In production environments where this can be a limitation, dynamic reloading and reconfiguration can be implemented. In TEADAL Platform, the declarative k8s control plane can be relied upon to reload the SFDP (basically, restart the old pods and start up new ones) when configureation change is required. 
 
-TBD - add snapshots of the settings
+TBD - add snapshots of the settings json
 
-##### Caching Module
+##### The Caches Module
+The caching module is architected to support flexible selection of backend cache implementations and injection of the serialization to be used at the boundary of the cache and it's user. There two main concepts developed to support this flexibility, the Cache Backends and the Cache Roles, are described here, the serialization support will be decribed next as it is  a separate module and is used not only by the caches.
 
-The caching module is extensible, with a BaseCache class defining the cache interface methods as well as a set ob abstract methods that are expected to be realized by each of the specific Cache Backends.
+###### Cache Backends
+The Cache Backends concept allows SFDP caching to be:
+- Flexible, allowing to switch caching implementations easily
+- Maintainable, decoupling the app logic from cache details
+- Future-proof, allowing to extend to other cache implementation as needed (e.g., Memcached, Cloud Caches).
 
-**Cache Backends**
+The implementation is based on a BaseCache class defining the cache interface methods as well as a set ob abstract methods that are expected to be realized by each of the specific Cache Backends. At the moment of writing, ASG-runtime implements three different caching backends, the LRU, the diskcache, and the redis, selected to allow a range of possible TEADAL use cases and is designed to allow introducing additional backends if needed. Here is a brief comparison of several backends considered and selected for implementation: 
 
+<!-- the tables need to be improved and properly rendered -->
+![alt text](image.png)
+![alt text](image-3.png)
 
-**Cache Roles**
-The dual-level approach to caching, supports two roles:
-- Origin Cache stores raw data fetched from origin APIs and is also header-aware (respects ETag, Last-Modified if provided by the FDPs).
-- Response Cache: stores transformed results for rapid repeated access, especially useful when original data is stable, but transformations are costly.
- 
-The origin cache and the response cache reuse the backend implementation but differ in how the compute the keys and how they decide on data revocation. 
+###### Cache Roles
+The dual-level approach to caching, supports two roles, the origin cache and the response cache. Independent of the role the cache plays, all the caches reuse the same implementation (backend, configuration, serialization) but differ in how they compute the keys, how they decide on data revocation, and what driver is used to 'own' the cache.
 
-For the response cache key, we hash the endpoint's GIN Connector Specification and cache the transormed and encoded response dataset. 
+- **Response Cache** 
+  - stores transformed results for rapid repeated access and is especially useful when original data is stable, but transformations are costly
+  - response cache key is computed as a hash of the endpoint's GIN Connector Specification 
+  - cached objects are transormed and encoded response datasets
 
-For the origin cache key, we hash all the available REST call parameters used to retrieve the data, namely, the url with its path elements, parameters,etc. In addition, we cache both the dataset received from the FDP and the http headers that are used to inform the FDP about the caching on next request so that new data is only retrieved when it was modified at the origin: 
-- ETag (Entity Tag) → A unique hash that changes if the data changes.
-- Last-Modified → A timestamp indicating when the resource was last updated.
+- **Origin Cache** 
+  - stores raw data fetched from origin APIs as well as additional information optionally provided by the origin server, in our case, the caching http headers (other options considered described next)
+  - origin cache key is computed as a hash of all the available REST call parameters used to retrieve the data, namely, the url with its path elements, parameters,etc.
+  - cached objects are of two types:
+    - data: the dataset received from the FDP, cached under the origin cache key for this endpoint
+    - headers: ETag/LastModified http headers, if they were provided by the origin FDP, cached under a special key, created by appending a header prefix to the origin cache key for this endpoint
+      - ETag (Entity Tag) → A unique hash that changes if the data changes.
+      - Last-Modified → A timestamp indicating when the resource was last updated.
+  - the flow:
+    - when first fetching the data, we store, along with the data, the values returned in the ETag or the Last-Modified headers or both
+    - when this dataset is requested again, we add data freshness validation headers to the request we send to the origin FDP
+    - If-None-Match header when the ETag response header is available in the cache 
+    - If-Modified-Since header when the Last-Modified response header is available in the cache 
+    - if the server responds with 304 Not Modified, we use the cached data
+    - if the server responds with 200 OK, get the new data and update the cache.
 
-When first fetching the data, we store the values returned in the ETag or the Last-Modified headers or both. When this dataset is requested again, we add data freshness validation headers to the request we send to the origin FDP:
-- If-None-Match header when the ETag response header is available in the cache 
-- If-Modified-Since header when the Last-Modified response header is available in the cache 
-
-If the server responds with 304 Not Modified, we use the cached data, if the server responds with 200 OK, get the new data and update the cache.
-
-Alternatively, we could implement sending a lightweight "Version Check" Request to the origin FDP. This could be more predictable if supported by all the FDPs, e.g. by implementing data versioning and a service endpoint to retrieve the version, e.g., https://{FDP-URL}/{FDP-ENDPOINT_WITH_PARAMS}/version. In production systems we recommend to implement this fucntionality across all the FDPs in the TEADAL Federation and rely on it to a cleaner origin caching.
+Alternatively, we could implement sending a lightweight "Version Check" Request to the origin FDP. This could be more predictable if supported by all the FDPs, e.g. by implementing data versioning and service endpoints to retrieve the version, e.g., https://{FDP-URL}/{FDP-ENDPOINT_WITH_PARAMS}/version. In production systems we recommend to implement this fucntionality across all the FDPs in the TEADAL Federation and rely on it for a cleaner origin caching.
 
 Yet another alternative would be relying on TTL for refreshing the data but this would be more complex and even less predictable that the ETag/LastModified option. We recommend against relying on TTLs/SETEX for data freshness in production envioronmenst. 
 
-Cache invalidation for removal of stale and unneeded data can rely on TTL and other eviction methods. We did not evaluate this aspect in the context of ASG-runtime.
+Both for the origin and for the response cache invalidation for removal of stale and unneeded data can rely on TTL and other eviction methods. We did not evaluate this aspect in the context of current prototype. It'll have to be addressed in the production systems.
+
+##### The Serializers Module
+
+The serializers module is very simple and is decribed here for completess only. Built similarily to the caching module, as a base calls with its different specific implementations, it allows injecting the most suitable encoding of the cached objects on a boudary between the cache and between its caller. For example, if the cache can store non-serialized objects, e.g. lru cache, the system can be configured to use `noop` serializer for this cache to avoid possibly costly encodings/decodings on cache boundary. For cases, the cache requires to receive bytes objects for caching, we inject encoding serializer, depending on what type is prefered in the runtime settings. At the moment of writing, the system sypports three serializer implementations: a `noop` which avoids encoding/decoding, an `orjson` for fast encoding of the result datasets, and `pickle` encoding, as middle ground. As with caches, the library allows extensibility by adding additional custom serializers.
+
+##### The Executor Module
+The Executor is a singleton-like orchestrator, initialized once per SFDP app instance execution, during FastAPI lifespan startup, and acts as a lifespan-injected app context used by the app for serving all its endpoints. This is like having a service object in classic design patterns. In a web context, this gives separation of concerns and clarity, especially as the system grows. Note that Executor is the only ASG-runtime library object that SFDP apps must know about.
+- loading, validating, and interpreting the settings
+- instantiating logging and runtime objects such as caches, serializers, origin fetcher, etc., according to the settings, ensuring initialization is centralized and robust
+- communications with the FastAPIapp executing the SFDP - returning results and errors according to a well formed minimalistic interface (see below)
+- managing the response cache and encoding of the result datasets into json format with `orjson` serializer
+- coordinating fetch-transform-respond logic per data endpoint request, delegating data retrieval & transformation to a GIN-dependent per-request driver objects explained next
+- manages runtime lifecycle and access to it state such as:
+  - Shared caches
+  - Global settings
+  - Runtime stats / observability
+  - Logging / tracing
+
+**Executor-app interface** is created to be as minimal as possible, with only few hooks exposed by the Executor to the FastAPI app (SFDP):
+1. async `create` method - load and initiate once; on failure, errors are logge and reported, SFDP initialization is prevented
+2. async `get_endpoint_data` method - receives GIN Connector Spec for the endpoint and returns the result as a dictionary of "status" and details. The "status" can be "ok" or "error". For "ok" status, the details contain the already encoded and ready to be sent result dataset; in this case the app returns http 200 with the data with no additional json encoding. For "error" status, the details contain the problem description; in this case the app returns http 500 with problem description. In production, return codes can be further refined.
+3. syncronized methods to support service endpoints; currenty implemented methods are:
+  - `get_settings` method - returns the currently applied settings as a dictionary
+  - `get_stats` method - returns the current values stored in the system wide conters
+  - `clear_origin_cache` and `clear_response_cache` - auxilary convenience methods that can be used to purge cases without restarting the app if needed.
+
+##### The Request Driver Module (GinHelper)
+While Executor object contains all the global state of the executing SFDP, each requies is handled by a separate instance of the per-request driver object. As it is dependant on GIN library, the object is called GinHelper.
+
+GinHelper abstraction encapsulates gin-specific logic needed for a single request:
+- use GIN Parser to parse the GIN Connector specification into, roughly, the following: 
+  - a list of objects that need to be returned in the response dataset
+  - a list of origin endpoints that must provide data for computing the result datasets, including target FDP url, endpoint path and any query parameters
+  - a list tranforms that have to be applied to origin datasets for computing the response datasets
+- use global OriginFetcher to collect all the required origin data (the fetcher will cache data in a way transparent to the GinHelper)
+- use GIN Executor to load and apply transformations 
+
+In addittion, as part of GinHelper initialization for a specific request, after the GIN Connector spec is sucessfully parsed, GinHelper is also responsible to create a cache key to be used by the Executor for this request. This way, we decouple all the aspets of spec handling into the GinHelper object and releaf the Executor about knowing its details. On the other hand, all the caching done by the system is fully decoupled from the GinHelper and is transparent to it. Same is true for the http access done by the OriginFetcher on behalf of GinHelper.
+
+To apply the transformation of origin datasets into result datasets, GinHelper uses `transforms` submodule from GIN Executor, almost as is. This code loads all the methods at runtime from files in the `transforms` path provided as settings, applies the required transformations, and returns the result. In the future, we envision refactoring this code to become a separate module that will encapsulate the tranforms functionality even further. For example, this module could interface with an external TransformsLibrary service for obtaining the methods as well as for providing feedback on runtime performance of individual transforms back to the library, e.g. using protocol such as MCP. In addition, this module could cache the loaded transformations for cases dynamic reloading is not required, saving time, energy, and compute resources. These advanced capabilities are out of the limited scope of the TEADAL prototyping, thus the system is currently limited to only the simple pandas based transfromations that GIN Executor supports.
 
 
+##### The http Module (OriginFetcher)
+The http module implements all the boilerplate related to fetching data from origin FDP endpoints. The main object exposed by the module is OriginFetcher, responsible for interacting with the rest of the system, fetching the origin data with the help of its http client helpers, caching the fetched results and their caching headers, and returning them to the caller as transformation ready json datasets, so the caller does not have to deal with http objects such as Response, Headers, etc.
+In the GIN Library that does not support caching, all http access is handled with synchronous `requests` library. For TEADAL, this code was refactored to extract the domain specific behaviour into OriginFetcher object and to replace the http client implementation with the asynchronous, httpx-based one. As a result, ASG-library features reliable, asynchronous http communications with the FDP servers, supporting retries with exponential backoff, paging, error handling, etc. In addition, refactoring allows for changing the http client code separately and replacing the implementation as needed, although we did not pursue exposing a clear interface for this in the scope of the project.
 
-**Supported Caching Backends**
 
-✅ Flexible – Switch caching implementations easily.
-✅ Maintainable – Decouples app logic from cache details.
-✅ Future-proof – Can extend to other caches (e.g., Memcached, Cloud Caches).
-ASG-runtime implements three different caching backends, the LRU, the diskcache, and the redis, and is designed to allow introducing additional backends if needed. Here is a brief comparison of several backends considered for implementation: 
+##### Serving SFDP data endpoints
+We summarize the Software Architecture section by providing an overview of steps involved in serving the data endpoints SFDPs:
 
-![alt text](image.png)
+TODO - visualize this either as component or a a sequence diagram.
 
-![alt text](image-3.png)
+- User issues a request to a running SFDP's data endpoint
+- SFPD app receives a request, obtains the executor object from its runtime conxext and issues it's get_endpoint_data method, providing it a GIN Connector Specification string that is embedded in each data endpoint of the app (by the ASG-tool, when the SFDP was generated)
+- Executor receives the spec and creates a new Gin Helper object to manage this request procesing
+- GinHElper parses the spec. 
+  - On errors, it infroms the Executor and it in turns inform the app so the user receives http 500
+  - On success, it informs the executor and waits for further commands
+- Executor requests GinHelper to provide a caching key for the request it encapsulates
+- Executor uses the key to lookup the response cache (if response cache is disabled, this step is omitted)
+  - If the result is cached, it is returned to the app
+  - If the result is not cached, Executor requests the GinHelper to produce the response dataset
+- GinHelper requests OriginFetcher to fetch origin data for each origin endpoint required to compute the result. For each endpoint:
+  - Origin fetcher looks up the origin cache and returns cache data on hit (if origin cache is disabled, this step is omitted)
+  - Origin fetcher uses its http client to obtain the result in json form
+    - on errors, failure is reported
+    - on sucess, the data is retuned and cached if the origin cache is enabled
+- GinHelper uses GIN Executor to load and apply the transforms and returns the result to the Executor
+- Executor encodes the result using orjson encoder
+- Executor caches the result in the response cache if it is enabled
+- Executor returns the result (or error if one of above steps failed) to the SFDP app
+- The SFDP app returns the resul (or error) to the user
+
+### Operational Aspects
+
+#### Packaging and TEADAL Platform Integration
+Federation Nodes:
+Uniform k8s base image, supports Istio, ArgoCD, Redis, etc.
+SFDPs run in isolated containers, using runtime-provided Redis and storage layers.
+Catalog-aware annotations and lifecycle management.
+Support for in-node policy enforcement and runtime alerts.
+At the time of writing, ASG-tool is provided as a command line utility that imports GIN modules as dependency and relies on Ollama service deployed on TEADAL as a driver for the genetrative AI capabilities of GIN. We plan to enchance the tool itself to be deployed as TEADAL platform service as part of TEADAL Node and to expose a web interface in addition to CLI. Additional possible enchancement, as already mentioned above, is to integrate git repo creation and pushing. 
+
+How This Works
+App Initialization: The FastAPI app initializes with the settings and creates an instance of Executor to manage caching and data fetching logic.
+
+Endpoint Logic: Each endpoint in the FastAPI app uses Depends to call executor.get_data(). This method internally creates a DataRequestDriver instance to handle the specifics of the request (e.g., fetching data, transforming it).
+
+DataRequestDriver: For each request, a fresh DataRequestDriver instance is created. It handles fetching the raw data, applying transformations, and using the appropriate caching mechanism.
+
+Conclusion
+With this structure:
+
+The app code remains minimal, only knowing about the Executor and settings.
+
+The Executor is responsible for creating a DataRequestDriver per request.
+
+The app is unaware of the inner workings of data retrieval or transformations.
+
+Would you like to proceed with this setup?
+
+High-Level Flow:
+DataRequestDriver Initialization:
+
+The get_data method in the Executor will initialize the DataRequestDriver. The DataRequestDriver will be responsible for parsing the request spec, fetching data, and handling transformations.
+
+Result Cache Interaction:
+
+The Executor will first check if the transformed data is already available in the result cache (this would be a simple cache lookup).
+
+If found, return it directly with an update to cache stats (e.g., cache hit).
+
+If not found, it moves to the next step of fetching the required data.
+
+Origin Cache Lookup:
+
+The DataRequestDriver will check whether the origin data is available in the origin cache.
+
+If any origin data is missing from the cache, it will be fetched from the origin via the HTTP client.
+
+Data Transformation:
+
+Once all data from the origin is retrieved (either from cache or fresh), the necessary transformations will be applied.
+
+The transformed data is then returned to the Executor to be cached (in the result cache).
+
+Returning the Result:
+
+The transformed and cached data is returned to the FastAPI app to be encoded (e.g., as a JSON response) and sent to the user.
+
+Selecting what to cache, the original data or the transformed data, or both, depends on the nature of the origin and the transformed datasets transformation, the network availability, the storage availability, the policy and additional system constraints. If the transformation is lightweight, e.g., simple filtering, renaming fields, the FDP data is stable (static) and newtork bandwith is scarce, then caching the origin data and recomputing the transformation for each SFDP request can be the best solution. Same applies if the origin data is stable but the transformations are expected to be dynamic (injected for runtime loading and execution). On the other hand, when the transformations are stable but computationally expensive, e.g. e.g., encryption, heavy filtering, aggregation, or when the computed dataset is significatly smaller than the origin dataset and storage is scarce, it might be better to cache the response data. In cases the origin FDP data is very dynamic, caching should be disabled, while in some other cases enabling both caches can benefit the system. In current implementation, caching is enabled per SFDP instance and is applied across all the endpoints. For production systems, the implementation can be easily adapted to make separate decision per endpont.
 
 ```yaml
 apiVersion: v1
@@ -582,144 +732,8 @@ Track bytes cached vs retrieved
 
 Report via a /metrics endpoint or log export
 
-Example structure:
----
-✅ The Executor as Master/Manager (Singleton-like)
-Responsibilities:
-
-Manages lifecycle and access to:
-
-Shared caches
-
-Global settings
-
-Runtime stats / observability
-
-Logging / tracing
-
-Delegates data retrieval & transformation to per-request Driver objects
-
-Usage:
-
-Initialized once (per app instance), typically during FastAPI startup
-
-Injected into routes or used as a shared module/global
-
-This is like having a service object in classic design patterns. In a web context, this gives separation of concerns and clarity, especially as the system grows.
-Executor abstraction: Central coordinator of caching, fetching, and transformation logic, aware of app config and serializer choices.
-Executor: The Core Orchestrator
-Handles:
-Settings validation.
-Instantiating caches, fetchers, and serializers.
-Coordinating fetch-transform-respond logic per endpoint.
-Acts as a lifespan-injected app context, ensuring initialization is centralized and robust.
-
----
-✅ The Driver per Request
-Responsibilities:
-
-Encapsulates all logic needed for a single request:
-
-Target origin (FDP) endpoint and any query parameters
-
-The transformation pipeline for the data
-
-Custom cache key generation for this slice of data
-
-Fetches from cache or source as needed, performs transformation, returns data
-
-Why it works:
-
-Keeps the Executor thin and stateless across requests
-
-Allows each FastAPI route to instantiate a customized driver per invocation
-
-Encourages code reuse and testing: you can test driver behavior in isolation
 
 
----
-🔌 Fetcher & Transformer
-OriginFetcher: handles:
-Data fetching via HTTP.
-Integration with origin cache.
-Multi-endpoint fetching logic.
-Transformer: receives structured origin data and applies the correct chain of transformation functions (from the imported library) before returning the result.
-Experimental hooks (e.g., telemetry or auth) through wrapper decorators.
-OriginFetcher.fetch() is fully async.
-
-It tries to optimize bandwidth by leveraging:
-
-ETag (If server supports it).
-
-Last-Modified (If server supports it).
-
-Resilient: falls back to cached value on timeout or network error.
-
-Stateless and reusable for multiple keys/URLs.
-Exponential backoff: we multiply the base backoff by the attempt number.
-
-Graceful fallback: when all retries fail, we try to use cached data if available.
-
-Customizable retry logic: if needed, you can expose retryable status codes or add jitter.
-
-
-
-3. Generated SFDP Apps
-
-
-### Operational Aspects
-
-
-At the time of writing, ASG-tool is provided as a command line utility that imports GIN modules as dependency and relies on Ollama service deployed on TEADAL as a driver for the genetrative AI capabilities of GIN. We plan to enchance the tool itself to be deployed as TEADAL platform service as part of TEADAL Node and to expose a web interface in addition to CLI. Additional possible enchancement, as already mentioned above, is to integrate git repo creation and pushing. 
-
-How This Works
-App Initialization: The FastAPI app initializes with the settings and creates an instance of Executor to manage caching and data fetching logic.
-
-Endpoint Logic: Each endpoint in the FastAPI app uses Depends to call executor.get_data(). This method internally creates a DataRequestDriver instance to handle the specifics of the request (e.g., fetching data, transforming it).
-
-DataRequestDriver: For each request, a fresh DataRequestDriver instance is created. It handles fetching the raw data, applying transformations, and using the appropriate caching mechanism.
-
-Conclusion
-With this structure:
-
-The app code remains minimal, only knowing about the Executor and settings.
-
-The Executor is responsible for creating a DataRequestDriver per request.
-
-The app is unaware of the inner workings of data retrieval or transformations.
-
-Would you like to proceed with this setup?
-
-High-Level Flow:
-DataRequestDriver Initialization:
-
-The get_data method in the Executor will initialize the DataRequestDriver. The DataRequestDriver will be responsible for parsing the request spec, fetching data, and handling transformations.
-
-Result Cache Interaction:
-
-The Executor will first check if the transformed data is already available in the result cache (this would be a simple cache lookup).
-
-If found, return it directly with an update to cache stats (e.g., cache hit).
-
-If not found, it moves to the next step of fetching the required data.
-
-Origin Cache Lookup:
-
-The DataRequestDriver will check whether the origin data is available in the origin cache.
-
-If any origin data is missing from the cache, it will be fetched from the origin via the HTTP client.
-
-Data Transformation:
-
-Once all data from the origin is retrieved (either from cache or fresh), the necessary transformations will be applied.
-
-The transformed data is then returned to the Executor to be cached (in the result cache).
-
-Returning the Result:
-
-The transformed and cached data is returned to the FastAPI app to be encoded (e.g., as a JSON response) and sent to the user.
-
-Selecting what to cache, the original data or the transformed data, or both, depends on the nature of the origin and the transformed datasets transformation, the network availability, the storage availability, the policy and additional system constraints. If the transformation is lightweight, e.g., simple filtering, renaming fields, the FDP data is stable (static) and newtork bandwith is scarce, then caching the origin data and recomputing the transformation for each SFDP request can be the best solution. Same applies if the origin data is stable but the transformations are expected to be dynamic (injected for runtime loading and execution). On the other hand, when the transformations are stable but computationally expensive, e.g. e.g., encryption, heavy filtering, aggregation, or when the computed dataset is significatly smaller than the origin dataset and storage is scarce, it might be better to cache the response data. In cases the origin FDP data is very dynamic, caching should be disabled, while in some other cases enabling both caches can benefit the system. In current implementation, caching is enabled per SFDP instance and is applied across all the endpoints. For production systems, the implementation can be easily adapted to make separate decision per endpont.
 #### Lifecycle and Deployment Flow
 SFDP creation → validation → enrichment → deployment → monitoring.
 Catalog entries and GitOps repositories as authoritative sources.
@@ -727,12 +741,7 @@ Runtime controller (in progress) to manage state and redeployments.
 Annotations supported for deployment-time optimization (e.g., GPU requirements).
 Runtime observability pipeline feeding into smart monitoring dashboards.
 
-#### Platform Integration
-Federation Nodes:
-Uniform k8s base image, supports Istio, ArgoCD, Redis, etc.
-SFDPs run in isolated containers, using runtime-provided Redis and storage layers.
-Catalog-aware annotations and lifecycle management.
-Support for in-node policy enforcement and runtime alerts.
+
 Deployement diagram:
 
 ```mermaid
@@ -784,8 +793,7 @@ graph TD
 
 ```
     
-![
-    
+![   
 ](image-4.png)
 #### Example Scenario: From Spec to Deployed SFDP
 (Optional but illustrative: a diagram or short walkthrough)
