@@ -6,6 +6,7 @@ variables:
   DOCKER_REGISTRY: registry.gitlab.com
   #DOCKER_IMAGE: $DOCKER_REGISTRY/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME
   DOCKER_IMAGE: registry.teadal.ubiwhere.com/teadal-public-images/asg-runtime:0.0.1
+  DOCKER_USER_NAME: CI-token
 
 build-docker:
   stage: build
