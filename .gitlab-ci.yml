@@ -3,7 +3,9 @@ stages:
   - release
 
 variables:
-  DOCKER_REGISTRY: registry.gitlab.com
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+  #DOCKER_REGISTRY: registry.gitlab.com
   #DOCKER_IMAGE: $DOCKER_REGISTRY/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME
   DOCKER_IMAGE: registry.teadal.ubiwhere.com/teadal-public-images/asg-runtime:0.0.1
   DOCKER_USER_NAME: CI-token
@@ -12,7 +14,9 @@ build-docker:
   stage: build
   image: docker:latest
   services:
-    - docker:dind
+    - name: docker:dind
+      alias: docker
+  
   # override (empty) the global before_script
   before_script: []
   script:
