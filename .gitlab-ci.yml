@@ -7,8 +7,9 @@ variables:
   DOCKER_TLS_CERTDIR: ""
   #DOCKER_REGISTRY: registry.gitlab.com
   #DOCKER_IMAGE: $DOCKER_REGISTRY/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME
-  DOCKER_IMAGE: registry.teadal.ubiwhere.com/teadal-public-images/asg-runtime:0.0.1
+  DOCKER_IMAGE: registry.teadal.ubiwhere.com/teadal-public-images/asg-runtime
   DOCKER_USER_NAME: CI-token
+  DOCKER_REGISTRY: https://registry.teadal.ubiwhere.com
 
 build-docker:
   stage: build
@@ -20,9 +21,11 @@ build-docker:
   # override (empty) the global before_script
   before_script: []
   script:
-    - docker login -u "$DOCKER_USER_NAME" -p "$REGISTRY_PASSWORD" "https://registry.teadal.ubiwhere.com"
-    - docker build -t $DOCKER_IMAGE .
-    - docker push $DOCKER_IMAGE
+    - docker login -u "$DOCKER_USER_NAME" -p "$REGISTRY_PASSWORD" "$DOCKER_REGISTRY"
+    - docker build -t "$DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA"  .
+    - docker tag "$DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA" "$DOCKER_IMAGE:latest"
+    - docker push "$DOCKER_IMAGE:$CI_COMMIT_SHORT_SHA"
+    - docker push "$DOCKER_IMAGE:latest"
 
 build-python:
   stage: build
