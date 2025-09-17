@@ -33,7 +33,6 @@ class Executor:
 
         try:
             settings = Settings.load()
-            # print(f"settings={settings.model_dump_json(indent=2)}")
         except Exception as e:
             # printing as logging was not setup yet
             print(f"Settings validation failed: {e}")

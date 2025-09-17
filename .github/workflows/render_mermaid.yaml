@@ -1,0 +1,31 @@
+name: Render Mermaid Diagrams
+
+on:
+  push:
+    paths:
+      - 'docs/diagrams/**/*.mmd'
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Mermaid CLI
+        run: npm install -g @mermaid-js/mermaid-cli
+
+      - name: Render diagrams
+        run: |
+          mkdir -p docs/diagrams/rendered
+          for f in docs/diagrams/*.mmd; do
+            out="docs/diagrams/rendered/$(basename ${f%.mmd}.png)"
+            mmdc -i "$f" -o "$out"
+          done
+
+      - name: Commit rendered diagrams
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add docs/diagrams/rendered/*.png
+          git commit -m "Update rendered Mermaid diagrams" || echo "No changes"
+          git push

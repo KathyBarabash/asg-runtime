@@ -62,6 +62,7 @@ class MyBaseSettings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        env_prefix = ""
     )
 
 class Settings(MyBaseSettings):
@@ -93,28 +94,36 @@ class Settings(MyBaseSettings):
     origin_encoding: Encodings = Encodings.orjson
 
     # def __init__(self, **kwargs):
-    #     logger.debug("⚡ Settings kwargs at creation:", kwargs)
+    #     logger.debug("Settings kwargs at creation:", kwargs)
     #     super().__init__(**kwargs)
 
     @classmethod
-    def load(cls, env_file: str | None = ".env") -> "Settings":
+    def load(cls, env_file: str | None = ".env", env_prefix: str = "") -> "Settings":
         """Load settings, prefer real environment vars, fallback to .env."""
         env_data = {}
         dotenv = load_env_settings(env_file)
 
         # loop for model fields, prefer getenv over .env
         for field in cls.model_fields.keys():
-            value = os.getenv(f"ASG_{field.upper()}")  
+            value = (
+                os.getenv(f"{env_prefix}{field}")
+                or os.getenv(f"{env_prefix}{field.upper()}")
+                or os.getenv(f"{env_prefix}{field.lower()}")
+            )  
             if not value and dotenv:
                 value = dotenv.get(field)
                 
             if value:
-                logger.debug(f"field={field}, value={value}")
+                # print(f"field={field}, value={value}")
                 env_data[field] = cls._parse_value(value)
             else:
                 logger.debug(f"field={field} - no value, will use default")
 
-        return cls(**env_data)
+        try:
+            return cls(**env_data)
+        except ValidationError as e:
+            logger.error(f"Settings validation error: {e}")
+            raise
 
     @staticmethod
     def _parse_value(value: str):
@@ -128,12 +137,12 @@ class Settings(MyBaseSettings):
 
         # parse numbers carefully
         try:
-            if value.isdigit():
-                return int(value)
-            if value.replace(".", "", 1).isdigit() and value.count(".") == 1:
-                return float(value)
+            return int(value)
         except ValueError:
-            pass
+            try:
+                return float(value)
+            except ValueError:
+                return value
 
         return value
     

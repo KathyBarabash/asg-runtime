@@ -38,13 +38,12 @@ At the moment, no public installable package is planned.
 
 Additionally, the library is packaged into a pre-baked container image used by the ASG system to create templated SFDP instances. To use the image, use the following in your SFDP's Dockerfile:
 
-TODO - change to a real gitlab url
 ```sh
 # for the latest build
-FROM registry.gitlab.com/<yourgroup>/asg-runtime:latest 
+FROM registry.teadal.ubiwhere.com/teadal-public-images/asg-runtime:latest
 
 # for the concrete release
-FROM registry.gitlab.com/<yourgroup>/asg-runtime:<version> 
+FROM registry.teadal.ubiwhere.com/teadal-public-images/asg-runtime:<version> 
 ```
 
 ## Repository Structure
